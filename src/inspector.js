@@ -113,4 +113,33 @@
     }
     return value;
   };
+
+  // Override console.log/info/warn/error/debug so logged values flow into the
+  // capture stream too. The original handlers (deno_core's stdout printers) are
+  // still called, so logs continue to reach the host process — we just also
+  // emit them to the inline results pane.
+  if (typeof globalThis.console !== "object" || globalThis.console === null) {
+    globalThis.console = {};
+  }
+  function wrapConsole(method) {
+    const orig = globalThis.console[method];
+    globalThis.console[method] = function (...args) {
+      const formatted = args.map((a) => globalThis.__inspect(a)).join(" ");
+      // Extract the caller's source line from the V8 stack — user code lives
+      // in runjs_input.js, so we look for that frame.
+      let line = 0;
+      try {
+        const stack = new Error().stack || "";
+        const m = stack.match(/runjs_input\.js:(\d+)/);
+        if (m) line = parseInt(m[1], 10);
+      } catch (_) {}
+      try {
+        Deno.core.ops.op_capture(line, formatted);
+      } catch (_) {}
+      if (typeof orig === "function") {
+        return orig.apply(globalThis.console, args);
+      }
+    };
+  }
+  ["log", "info", "warn", "error", "debug"].forEach(wrapConsole);
 })();

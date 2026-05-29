@@ -95,7 +95,15 @@ fn instrument_stmt(stmt: &mut Stmt, cm: &Lrc<SourceMap>) {
     match stmt {
         // Bare expression statement: `foo + 1;`  /  `await fetch(...)`
         // -> `__capture(line, foo + 1);`
+        //
+        // Exception: skip top-level `console.X(...)` calls. The console methods
+        // are overridden in inspector.js to capture their args directly — if we
+        // also wrapped, we'd emit a redundant `undefined` (the log call's
+        // return value) for the same line.
         Stmt::Expr(expr_stmt) => {
+            if is_console_call(&expr_stmt.expr) {
+                return;
+            }
             let line = line_of(cm, expr_stmt.span);
             let inner = std::mem::replace(&mut expr_stmt.expr, undefined_expr());
             expr_stmt.expr = Box::new(capture_call(line, inner));
@@ -112,6 +120,19 @@ fn instrument_stmt(stmt: &mut Stmt, cm: &Lrc<SourceMap>) {
         }
         _ => {}
     }
+}
+
+/// True if `expr` is `console.<log|info|warn|error|debug>(...)`.
+fn is_console_call(expr: &Expr) -> bool {
+    let Expr::Call(call) = expr else { return false };
+    let Callee::Expr(callee) = &call.callee else { return false };
+    let Expr::Member(member) = callee.as_ref() else { return false };
+    let Expr::Ident(obj) = member.obj.as_ref() else { return false };
+    if obj.sym.as_str() != "console" {
+        return false;
+    }
+    let MemberProp::Ident(prop) = &member.prop else { return false };
+    matches!(prop.sym.as_str(), "log" | "info" | "warn" | "error" | "debug")
 }
 
 /// Build `__capture(<line>, <expr>)`.
