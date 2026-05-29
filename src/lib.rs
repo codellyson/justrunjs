@@ -8,6 +8,7 @@
 //! collect per-line captures -> hand them back grouped by line.
 
 mod instrument;
+mod loader;
 mod runtime;
 
 use anyhow::Result;
@@ -161,5 +162,37 @@ v + 1;
         let r = evaluate(src).unwrap();
         assert_eq!(find(&r, 1), "42");
         assert_eq!(find(&r, 2), "43");
+    }
+
+    #[test]
+    fn relative_typescript_import() {
+        use std::io::Write;
+
+        // Drop a util.ts under a unique temp dir and import it by absolute
+        // file:// URL — sidesteps any CWD coupling between parallel tests.
+        let tmp = std::env::temp_dir().join("runjs_test_import");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let util_path = tmp.join("util.ts");
+        {
+            let mut f = std::fs::File::create(&util_path).unwrap();
+            writeln!(
+                f,
+                "export function greet(name: string): string {{ return `hi ${{name}}`; }}"
+            )
+            .unwrap();
+        }
+        let util_url = url::Url::from_file_path(&util_path).unwrap();
+
+        let src = format!(
+            "\
+import {{ greet }} from \"{util_url}\";
+greet(\"Ada\");
+"
+        );
+        let r = evaluate(&src).unwrap();
+        assert_eq!(find(&r, 2), "'hi Ada'");
+
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

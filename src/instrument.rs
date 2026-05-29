@@ -25,7 +25,21 @@ use swc_core::ecma::transforms::base::resolver;
 use swc_core::ecma::transforms::typescript::strip;
 
 /// Transpile a TS snippet and instrument it. Returns runnable ESM JavaScript.
+///
+/// Used for the user's entry buffer (the editor content). The instrumentation
+/// pass wraps each top-level statement so its value flows through `__capture`.
 pub fn transpile_and_instrument(source: &str) -> Result<String> {
+    run_swc(source, true)
+}
+
+/// Transpile a TS file to JS WITHOUT instrumentation. Used by the module
+/// loader for imported `.ts` / `.tsx` files: they shouldn't appear in the
+/// results pane, they just need to be valid runnable JS.
+pub fn transpile_only(source: &str) -> Result<String> {
+    run_swc(source, false)
+}
+
+fn run_swc(source: &str, instrument: bool) -> Result<String> {
     let globals = Globals::default();
     GLOBALS.set(&globals, || {
         let cm: Lrc<SourceMap> = Default::default();
@@ -47,7 +61,9 @@ pub fn transpile_and_instrument(source: &str) -> Result<String> {
             .map_err(|e| anyhow!("parse error: {:?}", e.kind()))?;
 
         // --- 2. Instrument top-level statements (uses original spans) ---
-        instrument_module(&mut module, &cm);
+        if instrument {
+            instrument_module(&mut module, &cm);
+        }
 
         // --- 3. Strip TypeScript types ---
         let unresolved_mark = Mark::new();
