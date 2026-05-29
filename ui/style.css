@@ -1,0 +1,126 @@
+:root {
+  --bg: #1e1e1e;
+  --panel-bg: #1a1a1a;
+  --fg: #d4d4d4;
+  --accent: #4ec9b0;
+  --muted: #858585;
+  --header: #252526;
+  --border: #2d2d2d;
+  --result: #b5cea8;
+  --result-row-hover: rgba(255, 255, 255, 0.025);
+  --error: #f48771;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: var(--header);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  user-select: none;
+  flex: 0 0 auto;
+}
+
+.brand {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+
+.status {
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.status.error {
+  color: var(--error);
+}
+
+main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 4px 380px;
+  position: relative;
+}
+
+#editor {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
+#splitter {
+  background: var(--border);
+  cursor: col-resize;
+}
+
+#splitter:hover {
+  background: var(--accent);
+}
+
+#results {
+  background: var(--panel-bg);
+  color: var(--result);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 21px; /* must match Monaco's default for line alignment */
+  overflow: auto;
+  border-left: 1px solid var(--border);
+  position: relative;
+}
+
+/* Inner scroll container so we can position result rows by exact pixel offset
+   (matching Monaco's top-of-line position). */
+#results-inner {
+  position: relative;
+}
+
+.result-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  padding: 0 12px;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.result-row.error {
+  color: var(--error);
+}
+
+.result-row:hover {
+  background: var(--result-row-hover);
+}
+
+.result-placeholder {
+  color: var(--muted);
+  font-style: italic;
+  padding: 24px 16px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}

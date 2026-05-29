@@ -1,0 +1,30 @@
+[package]
+name = "runjs-rs"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "runjs_rs"
+path = "src/lib.rs"
+
+# CLI front-end: stdin/file -> instrumented run -> inline output.
+[[bin]]
+name = "runjs-cli"
+path = "src/bin/cli.rs"
+
+# Desktop app: Tauri shell hosting Monaco with live inline results.
+[[bin]]
+name = "runjs"
+path = "src/bin/app.rs"
+
+[dependencies]
+anyhow = "1.0.102"
+deno_core = "0.402.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.150"
+swc_core = { version = "68.0.1", features = ["ecma_parser", "ecma_ast", "ecma_visit", "ecma_codegen", "ecma_transforms", "ecma_transforms_typescript", "common", "common_concurrent"] }
+tauri = { version = "2", features = [] }
+tokio = { version = "1.52.3", features = ["full"] }
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
