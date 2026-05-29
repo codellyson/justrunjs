@@ -6,9 +6,12 @@
 //! - `file://` — read from disk; `.ts` / `.tsx` / `.mts` transpiled via SWC.
 //! - `https://` / `http://` — fetched via reqwest; transpiled if the URL path
 //!   ends in `.ts` / `.tsx` / `.mts`.
+//! - `npm:pkg[@ver][/sub]` — rewritten to `https://esm.sh/pkg[@ver][/sub]` at
+//!   resolve time; the rest of the load + cache path is the ordinary https://
+//!   case.
 //!
-//! `npm:`, bare specifiers (`import x from "lodash"`), and other schemes are
-//! rejected for now — the user opted in to "HTTPS + relative file paths".
+//! Bare specifiers (`import x from "lodash"`) and other schemes are rejected
+//! — use the explicit `npm:` form for npm packages.
 //!
 //! Each fresh `JsRuntime` (we build one per `evaluate` call) consults a
 //! process-wide in-memory cache, so the cost of a network fetch is paid once
@@ -101,6 +104,13 @@ impl ModuleLoader for RunjsModuleLoader {
         referrer: &str,
         _kind: ResolutionKind,
     ) -> ModuleResolveResponse {
+        // npm: specifiers route through esm.sh, which serves npm packages as
+        // ESM modules. The remaining load/cache path is identical to the
+        // ordinary https:// case.
+        if let Some(rest) = specifier.strip_prefix("npm:") {
+            let rewritten = format!("https://esm.sh/{rest}");
+            return resolve_import(&rewritten, referrer).map_err(JsErrorBox::from_err);
+        }
         resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
     }
 

@@ -80,6 +80,53 @@ function lineNumbersExtensions(show) {
   return show ? [lineNumbers(), highlightActiveLineGutter()] : [];
 }
 
+// Language extension lives in its own compartment so switching tabs (TS<->JS)
+// reconfigures Lezer in place instead of rebuilding the whole editor.
+const languageCompartment = new Compartment();
+function languageExt(lang) {
+  return javascript({ typescript: lang === "typescript" });
+}
+
+// ---------- tabs ----------
+const TABS_KEY = "runjs.tabs";
+let tabs = [];
+let activeId = null;
+
+function loadTabs() {
+  const raw = localStorage.getItem(TABS_KEY);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed.tabs) && parsed.tabs.length > 0) {
+        tabs = parsed.tabs;
+        activeId = parsed.activeId || tabs[0].id;
+      }
+    } catch {}
+  }
+  if (tabs.length === 0) {
+    tabs = [
+      {
+        id: "t-1",
+        name: "untitled.ts",
+        content: STARTER,
+        language: "typescript",
+      },
+    ];
+    activeId = "t-1";
+  }
+}
+loadTabs();
+
+function getActiveTab() {
+  return tabs.find((t) => t.id === activeId) || tabs[0];
+}
+
+function persistTabs() {
+  const active = getActiveTab();
+  if (active) active.content = editor.state.doc.toString();
+  localStorage.setItem(TABS_KEY, JSON.stringify({ tabs, activeId }));
+}
+
 // ---------- editor theme ----------
 const editorTheme = EditorView.theme(
   {
@@ -149,10 +196,11 @@ const codeHighlight = HighlightStyle.define([
 ]);
 
 // ---------- editor instance ----------
+const _bootTab = getActiveTab();
 const editor = new EditorView({
-  parent: document.getElementById("editor"),
+  parent: document.getElementById("editor-host"),
   state: EditorState.create({
-    doc: STARTER,
+    doc: _bootTab.content,
     extensions: [
       lineNumbersCompartment.of(lineNumbersExtensions(showLineNumbers)),
       highlightActiveLine(),
@@ -177,11 +225,14 @@ const editor = new EditorView({
           },
         },
       ]),
-      javascript({ typescript: true }),
+      languageCompartment.of(languageExt(_bootTab.language)),
       syntaxHighlighting(codeHighlight),
       editorTheme,
       EditorView.updateListener.of((update) => {
-        if (update.docChanged) schedule();
+        if (update.docChanged) {
+          persistTabs();
+          schedule();
+        }
       }),
     ],
   }),
@@ -465,6 +516,147 @@ lineNumbersToggle.addEventListener("change", () => {
     ),
   });
 });
+
+// ---------- tab bar ----------
+const tabsEl = document.getElementById("tabs");
+
+function activateTab(id) {
+  if (id === activeId) return;
+  const out = getActiveTab();
+  if (out) out.content = editor.state.doc.toString();
+  activeId = id;
+  const incoming = getActiveTab();
+  editor.dispatch({
+    changes: { from: 0, to: editor.state.doc.length, insert: incoming.content },
+    effects: languageCompartment.reconfigure(languageExt(incoming.language)),
+  });
+  renderTabs();
+  persistTabs();
+  schedule();
+}
+
+function nextUntitled(lang) {
+  const ext = lang === "typescript" ? "ts" : "js";
+  for (let n = 1; ; n++) {
+    const name = n === 1 ? `untitled.${ext}` : `untitled${n}.${ext}`;
+    if (!tabs.some((t) => t.name === name)) return name;
+  }
+}
+
+// Pre-seed content for a fresh +npm tab — gives the user a working example
+// they can immediately tweak. Uses lodash because it's tiny on esm.sh and
+// makes for an obvious before/after when chunking an array.
+const NPM_TEMPLATE = `// Any npm package, served as ESM via esm.sh.
+import _ from "npm:lodash@4";
+
+_.chunk([1, 2, 3, 4, 5], 2);
+`;
+
+function newTab(lang = "typescript", content = "") {
+  const id = "t-" + Date.now();
+  tabs.push({ id, name: nextUntitled(lang), content, language: lang });
+  activateTab(id);
+}
+
+function closeTab(id) {
+  if (tabs.length <= 1) return; // always keep one tab open
+  const idx = tabs.findIndex((t) => t.id === id);
+  if (idx === -1) return;
+  tabs.splice(idx, 1);
+  if (activeId === id) {
+    activeId = tabs[Math.max(0, idx - 1)].id;
+    const incoming = getActiveTab();
+    editor.dispatch({
+      changes: {
+        from: 0,
+        to: editor.state.doc.length,
+        insert: incoming.content,
+      },
+      effects: languageCompartment.reconfigure(languageExt(incoming.language)),
+    });
+    schedule();
+  }
+  renderTabs();
+  persistTabs();
+}
+
+function toggleTabLang(id) {
+  const t = tabs.find((tab) => tab.id === id);
+  if (!t) return;
+  t.language = t.language === "typescript" ? "javascript" : "typescript";
+  const ext = t.language === "typescript" ? "ts" : "js";
+  t.name = t.name.replace(/\.(ts|js)$/i, "." + ext);
+  if (id === activeId) {
+    editor.dispatch({
+      effects: languageCompartment.reconfigure(languageExt(t.language)),
+    });
+    schedule();
+  }
+  renderTabs();
+  persistTabs();
+}
+
+function renderTabs() {
+  tabsEl.innerHTML = "";
+  for (const t of tabs) {
+    const el = document.createElement("div");
+    el.className = "tab" + (t.id === activeId ? " active" : "");
+    el.dataset.id = t.id;
+    el.setAttribute("role", "tab");
+
+    const lang = document.createElement("button");
+    lang.className = "tab-lang";
+    lang.textContent = t.language === "typescript" ? "TS" : "JS";
+    lang.title = "Toggle language";
+    lang.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleTabLang(t.id);
+    });
+
+    const name = document.createElement("span");
+    name.className = "tab-name";
+    name.textContent = t.name;
+
+    const close = document.createElement("span");
+    close.className = "tab-close";
+    close.textContent = "×";
+    close.title = "Close";
+    close.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeTab(t.id);
+    });
+
+    el.addEventListener("click", () => activateTab(t.id));
+
+    el.appendChild(lang);
+    el.appendChild(name);
+    el.appendChild(close);
+    tabsEl.appendChild(el);
+  }
+
+  const addTs = document.createElement("button");
+  addTs.className = "tab-add";
+  addTs.textContent = "+TS";
+  addTs.title = "New TypeScript tab";
+  addTs.addEventListener("click", () => newTab("typescript"));
+  tabsEl.appendChild(addTs);
+
+  const addJs = document.createElement("button");
+  addJs.className = "tab-add";
+  addJs.textContent = "+JS";
+  addJs.title = "New JavaScript tab";
+  addJs.addEventListener("click", () => newTab("javascript"));
+  tabsEl.appendChild(addJs);
+
+  const addNpm = document.createElement("button");
+  addNpm.className = "tab-add npm";
+  addNpm.textContent = "+npm";
+  addNpm.title = "New tab with an npm: import template";
+  addNpm.addEventListener("click", () => newTab("typescript", NPM_TEMPLATE));
+  tabsEl.appendChild(addNpm);
+}
+
+renderTabs();
 
 // ---------- draggable splitter ----------
 (function setupSplitter() {

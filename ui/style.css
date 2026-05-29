@@ -144,11 +144,125 @@ main {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  display: grid;
+  grid-template-rows: 32px 1fr;
 }
 
-#editor > .cm-editor {
+#editor-host {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#editor-host > .cm-editor {
   height: 100%;
   width: 100%;
+}
+
+/* ---------- tab bar ---------- */
+
+#tabs {
+  display: flex;
+  align-items: stretch;
+  background: var(--sidebar-bg);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  user-select: none;
+}
+
+#tabs::-webkit-scrollbar {
+  height: 4px;
+}
+#tabs::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  padding: 0 10px 0 12px;
+  font-size: 12px;
+  color: #888;
+  cursor: pointer;
+  border-right: 1px solid var(--border);
+  background: transparent;
+}
+
+.tab:hover {
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--fg);
+}
+
+.tab.active {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.tab .tab-lang {
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--muted-strong);
+  text-transform: uppercase;
+  border: 0;
+  cursor: pointer;
+  font-family: var(--font-mono);
+}
+
+.tab .tab-lang:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--fg);
+}
+
+.tab .tab-name {
+  font-family: var(--font-mono);
+}
+
+.tab .tab-close {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  color: var(--muted-strong);
+  font-size: 14px;
+  line-height: 1;
+  margin-left: 2px;
+}
+
+.tab .tab-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--fg);
+}
+
+.tab-add {
+  background: transparent;
+  border: 0;
+  color: var(--muted-strong);
+  height: 100%;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  line-height: 1;
+  padding: 0 10px;
+  letter-spacing: 0.3px;
+}
+
+.tab-add:hover {
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tab-add.npm:hover {
+  color: #cb3837;
 }
 
 /* Flat splitter: no painted divider, just a col-resize hit area. */
