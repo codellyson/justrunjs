@@ -4,7 +4,7 @@
 // is positioned at the same y-offset as its source line in the editor, and the
 // two panes scroll in lockstep.
 
-import { EditorState } from "https://esm.sh/@codemirror/state@6";
+import { EditorState, Compartment } from "https://esm.sh/@codemirror/state@6";
 import {
   EditorView,
   lineNumbers,
@@ -68,6 +68,18 @@ function setStatus(text, state) {
 
 const LINE_HEIGHT = 21; // keep in sync with .cm-line line-height + CSS .result-row
 
+// ---------- persisted settings ----------
+const SHOW_LINE_NUMBERS_KEY = "runjs.showLineNumbers";
+let showLineNumbers =
+  localStorage.getItem(SHOW_LINE_NUMBERS_KEY) !== "false"; // default on
+
+// CodeMirror compartment lets us swap the line-numbers extensions at runtime
+// when the user toggles the setting — no full editor rebuild needed.
+const lineNumbersCompartment = new Compartment();
+function lineNumbersExtensions(show) {
+  return show ? [lineNumbers(), highlightActiveLineGutter()] : [];
+}
+
 // ---------- editor theme ----------
 const editorTheme = EditorView.theme(
   {
@@ -108,30 +120,32 @@ const editorTheme = EditorView.theme(
   { dark: true },
 );
 
+// RunJS-ish palette: pink keywords, cyan identifiers, green strings, purple
+// numerics — Dracula-leaning to match RunJS's pastel feel against #1e1e1e.
 const codeHighlight = HighlightStyle.define([
-  { tag: tags.keyword, color: "#c586c0" },
-  { tag: tags.controlKeyword, color: "#c586c0" },
-  { tag: tags.moduleKeyword, color: "#c586c0" },
-  { tag: tags.definitionKeyword, color: "#569cd6" },
-  { tag: [tags.string, tags.special(tags.string)], color: "#ce9178" },
-  { tag: tags.number, color: "#b5cea8" },
-  { tag: tags.bool, color: "#569cd6" },
-  { tag: tags.null, color: "#569cd6" },
-  { tag: tags.atom, color: "#569cd6" },
-  { tag: tags.variableName, color: "#9cdcfe" },
-  { tag: tags.propertyName, color: "#9cdcfe" },
-  { tag: tags.function(tags.variableName), color: "#dcdcaa" },
-  { tag: tags.function(tags.propertyName), color: "#dcdcaa" },
-  { tag: tags.typeName, color: "#4ec9b0" },
-  { tag: tags.className, color: "#4ec9b0" },
-  { tag: tags.comment, color: "#6a9955", fontStyle: "italic" },
-  { tag: tags.lineComment, color: "#6a9955", fontStyle: "italic" },
-  { tag: tags.blockComment, color: "#6a9955", fontStyle: "italic" },
-  { tag: tags.operator, color: "#d4d4d4" },
-  { tag: tags.punctuation, color: "#d4d4d4" },
-  { tag: tags.bracket, color: "#d4d4d4" },
-  { tag: tags.regexp, color: "#d16969" },
-  { tag: tags.escape, color: "#d7ba7d" },
+  { tag: tags.keyword, color: "#ff79c6" },
+  { tag: tags.controlKeyword, color: "#ff79c6" },
+  { tag: tags.moduleKeyword, color: "#ff79c6" },
+  { tag: tags.definitionKeyword, color: "#ff79c6" },
+  { tag: [tags.string, tags.special(tags.string)], color: "#50fa7b" },
+  { tag: tags.number, color: "#bd93f9" },
+  { tag: tags.bool, color: "#bd93f9" },
+  { tag: tags.null, color: "#bd93f9" },
+  { tag: tags.atom, color: "#bd93f9" },
+  { tag: tags.variableName, color: "#8be9fd" },
+  { tag: tags.propertyName, color: "#8be9fd" },
+  { tag: tags.function(tags.variableName), color: "#50fa7b" },
+  { tag: tags.function(tags.propertyName), color: "#ff79c6" },
+  { tag: tags.typeName, color: "#8be9fd" },
+  { tag: tags.className, color: "#8be9fd" },
+  { tag: tags.comment, color: "#6272a4", fontStyle: "italic" },
+  { tag: tags.lineComment, color: "#6272a4", fontStyle: "italic" },
+  { tag: tags.blockComment, color: "#6272a4", fontStyle: "italic" },
+  { tag: tags.operator, color: "#ff79c6" },
+  { tag: tags.punctuation, color: "#f8f8f2" },
+  { tag: tags.bracket, color: "#f8f8f2" },
+  { tag: tags.regexp, color: "#ffb86c" },
+  { tag: tags.escape, color: "#f1fa8c" },
 ]);
 
 // ---------- editor instance ----------
@@ -140,9 +154,8 @@ const editor = new EditorView({
   state: EditorState.create({
     doc: STARTER,
     extensions: [
-      lineNumbers(),
+      lineNumbersCompartment.of(lineNumbersExtensions(showLineNumbers)),
       highlightActiveLine(),
-      highlightActiveLineGutter(),
       history(),
       drawSelection(),
       dropCursor(),
@@ -156,6 +169,13 @@ const editor = new EditorView({
         ...defaultKeymap,
         ...historyKeymap,
         indentWithTab,
+        {
+          key: "Mod-Shift-f",
+          run: () => {
+            formatBuffer();
+            return true;
+          },
+        },
       ]),
       javascript({ typescript: true }),
       syntaxHighlighting(codeHighlight),
@@ -195,24 +215,33 @@ function classify(s) {
 let lastResults = [];
 let lastError = null;
 
+// Pull a source line out of the Rust error string. Runtime errors carry a
+// V8 stack frame like `at file:///cwd/runjs_input.js:7:3` — grab the 7.
+const ERR_LINE_RE = /runjs_input\.js:(\d+):/;
+
 function paintResults() {
   resultsInner.innerHTML = "";
   const totalLines = editor.state.doc.lines;
 
   if (lastError) {
+    const m = lastError.match(ERR_LINE_RE);
+    const errLine = m ? parseInt(m[1], 10) : 0;
+    const slot = errLine > 0 ? errLine : 1;
+
     const row = document.createElement("div");
     row.className = "result-row error";
-    row.style.top = "0px";
+    row.style.top = (slot - 1) * LINE_HEIGHT + "px";
     const lineno = document.createElement("span");
     lineno.className = "lineno";
-    lineno.textContent = "!";
+    lineno.textContent = errLine > 0 ? String(errLine) : "!";
     const value = document.createElement("span");
     value.className = "value";
     value.textContent = "error: " + lastError.split("\n")[0];
     row.appendChild(lineno);
     row.appendChild(value);
     resultsInner.appendChild(row);
-    resultsInner.style.height = LINE_HEIGHT + "px";
+    resultsInner.style.height =
+      Math.max(totalLines, slot) * LINE_HEIGHT + 200 + "px";
     return;
   }
 
@@ -285,18 +314,23 @@ resultsEl.addEventListener("scroll", () => {
 let timer = null;
 let inFlight = false;
 let pending = false;
+// Generation counter: Stop bumps this so any in-flight result is discarded
+// instead of repainting after the user cancelled.
+let evalGen = 0;
 
 async function runEval() {
   if (inFlight) {
     pending = true;
     return;
   }
+  const myGen = ++evalGen;
   inFlight = true;
   const source = editor.state.doc.toString();
   setStatus("running…", "running");
   const t0 = performance.now();
   try {
     const results = await invoke("evaluate_source", { source });
+    if (myGen !== evalGen) return; // Stop cancelled this eval mid-flight.
     const ms = Math.round(performance.now() - t0);
     lastError = null;
     lastResults = results;
@@ -306,6 +340,7 @@ async function runEval() {
       "ok",
     );
   } catch (e) {
+    if (myGen !== evalGen) return;
     const msg = typeof e === "string" ? e : (e && e.message) || String(e);
     lastError = msg;
     lastResults = [];
@@ -313,16 +348,73 @@ async function runEval() {
     setStatus(msg, "error");
   } finally {
     inFlight = false;
-    if (pending) {
+    if (pending && myGen === evalGen) {
       pending = false;
       runEval();
     }
   }
 }
 
+function stopEval() {
+  if (timer) {
+    clearTimeout(timer);
+    timer = null;
+  }
+  evalGen++; // poison any in-flight or queued result
+  pending = false;
+  setStatus("stopped", "ready");
+}
+
 function schedule() {
   if (timer) clearTimeout(timer);
   timer = setTimeout(runEval, 300);
+}
+
+// ---------- formatter ----------
+// Prettier (and its TS/estree plugins) are pulled in only on the first format
+// to keep cold-start cheap. Bound to Cmd/Ctrl+Shift+F in the editor keymap.
+let prettierPromise = null;
+function getPrettier() {
+  if (!prettierPromise) {
+    prettierPromise = Promise.all([
+      import("https://esm.sh/prettier@3/standalone"),
+      import("https://esm.sh/prettier@3/plugins/typescript"),
+      import("https://esm.sh/prettier@3/plugins/estree"),
+    ]).then(([std, ts, estree]) => ({
+      format: (code) =>
+        std.format(code, {
+          parser: "typescript",
+          plugins: [ts.default, estree.default],
+          printWidth: 80,
+          tabWidth: 2,
+          useTabs: false,
+          semi: true,
+          singleQuote: false,
+          trailingComma: "all",
+        }),
+    }));
+  }
+  return prettierPromise;
+}
+
+async function formatBuffer() {
+  setStatus("formatting…", "running");
+  try {
+    const prettier = await getPrettier();
+    const oldCode = editor.state.doc.toString();
+    const newCode = await prettier.format(oldCode);
+    if (newCode === oldCode) {
+      setStatus("already formatted", "ok");
+      return;
+    }
+    editor.dispatch({
+      changes: { from: 0, to: editor.state.doc.length, insert: newCode },
+    });
+    setStatus("formatted", "ok");
+  } catch (e) {
+    const msg = e && e.message ? e.message.split("\n")[0] : String(e);
+    setStatus("format failed: " + msg, "error");
+  }
 }
 
 runEval();
@@ -337,10 +429,41 @@ document.getElementById("btn-run").addEventListener("click", () => {
   runEval();
 });
 
+// Stop: cancel pending and in-flight evals.
+document.getElementById("btn-stop").addEventListener("click", stopEval);
+
 // ---------- fullscreen toggle ----------
 const mainEl = document.querySelector("main");
 document.getElementById("btn-expand").addEventListener("click", () => {
   mainEl.classList.toggle("results-full");
+});
+
+// ---------- settings popover ----------
+const settingsBtn = document.getElementById("btn-settings");
+const popover = document.getElementById("settings-popover");
+const lineNumbersToggle = document.getElementById("opt-line-numbers");
+
+lineNumbersToggle.checked = showLineNumbers;
+
+settingsBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  popover.classList.toggle("hidden");
+});
+
+document.addEventListener("click", (e) => {
+  if (popover.classList.contains("hidden")) return;
+  if (popover.contains(e.target) || settingsBtn.contains(e.target)) return;
+  popover.classList.add("hidden");
+});
+
+lineNumbersToggle.addEventListener("change", () => {
+  showLineNumbers = lineNumbersToggle.checked;
+  localStorage.setItem(SHOW_LINE_NUMBERS_KEY, String(showLineNumbers));
+  editor.dispatch({
+    effects: lineNumbersCompartment.reconfigure(
+      lineNumbersExtensions(showLineNumbers),
+    ),
+  });
 });
 
 // ---------- draggable splitter ----------

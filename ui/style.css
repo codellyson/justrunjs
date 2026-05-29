@@ -202,6 +202,53 @@ main.results-full #splitter {
   display: none;
 }
 
+/* ---------- settings popover ---------- */
+
+.settings-popover {
+  position: fixed;
+  left: 56px;
+  bottom: 12px;
+  min-width: 220px;
+  background: #252525;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 10;
+  font-size: 13px;
+  user-select: none;
+}
+
+.settings-popover.hidden {
+  display: none;
+}
+
+.settings-title {
+  padding: 4px 14px 6px;
+  color: var(--muted-strong);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.settings-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.settings-row input[type="checkbox"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 #results::-webkit-scrollbar {
   width: 8px;
   height: 8px;
