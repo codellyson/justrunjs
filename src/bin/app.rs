@@ -1,20 +1,37 @@
-//! Desktop shell: a Tauri window hosting Monaco with live inline results.
+//! Desktop shell: a Tauri window hosting CodeMirror with live inline results.
 //!
-//! The frontend (static HTML/JS under `ui/`) calls the `evaluate_source`
-//! command on each keystroke (debounced). We hand the source to the library's
-//! `evaluate()`, which transpiles + instruments + runs it in V8, and return the
-//! `Vec<LineResult>` the editor uses to paint inline value decorations.
+//! All JS evaluation happens on a single long-lived V8 worker thread (see
+//! `EvalWorker`). The Tauri commands here are thin: marshal a request to the
+//! worker, await the reply, hand the result back to the webview. We hold the
+//! worker behind a `OnceLock` so it's spawned lazily on first eval and shared
+//! across every subsequent command invocation.
 
-use runjs_rs::{LineResult, evaluate};
+use std::sync::OnceLock;
+
+use runjs_rs::{EvalWorker, LineResult};
+
+static WORKER: OnceLock<EvalWorker> = OnceLock::new();
+
+fn worker() -> &'static EvalWorker {
+    WORKER.get_or_init(EvalWorker::spawn)
+}
 
 #[tauri::command]
-fn evaluate_source(source: String) -> Result<Vec<LineResult>, String> {
-    evaluate(&source).map_err(|e| e.to_string())
+async fn evaluate_source(source: String) -> Result<Vec<LineResult>, String> {
+    worker().evaluate(source).await
+}
+
+#[tauri::command]
+fn stop_eval() {
+    worker().stop();
 }
 
 fn main() {
+    // Touch the worker so the V8 thread is up before the user's first keystroke.
+    let _ = worker();
+
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![evaluate_source])
+        .invoke_handler(tauri::generate_handler![evaluate_source, stop_eval])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

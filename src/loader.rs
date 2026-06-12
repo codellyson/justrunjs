@@ -46,6 +46,19 @@ fn cache() -> &'static Mutex<HashMap<String, String>> {
     C.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// Single shared HTTP client — `reqwest::get` builds a fresh TLS-enabled
+/// client on every call, which is ~ms of setup we don't want to pay per
+/// import. With a long-lived runtime, that cost is even more visible.
+fn http_client() -> &'static reqwest::Client {
+    static C: OnceLock<reqwest::Client> = OnceLock::new();
+    C.get_or_init(|| {
+        reqwest::Client::builder()
+            .user_agent("runjs-rs/0.1")
+            .build()
+            .expect("build reqwest client")
+    })
+}
+
 fn looks_like_typescript(url: &ModuleSpecifier) -> bool {
     let path = url.path();
     path.ends_with(".ts") || path.ends_with(".tsx") || path.ends_with(".mts")
@@ -68,7 +81,9 @@ async fn load_source(url: ModuleSpecifier) -> Result<String, JsErrorBox> {
             })?
         }
         "https" | "http" => {
-            let resp = reqwest::get(url.as_str())
+            let resp = http_client()
+                .get(url.as_str())
+                .send()
                 .await
                 .map_err(|e| JsErrorBox::generic(format!("fetch {key}: {e}")))?;
             let status = resp.status();

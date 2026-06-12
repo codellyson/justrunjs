@@ -27,7 +27,7 @@ fn op_capture(state: &mut OpState, #[smi] line: u32, #[string] formatted: &str) 
 extension!(runjs_ext, ops = [op_capture]);
 
 /// The JS preamble defining `__inspect` / `__capture` in the global scope.
-const INSPECTOR_JS: &str = include_str!("inspector.js");
+pub(crate) const INSPECTOR_JS: &str = include_str!("inspector.js");
 
 /// Execute instrumented JS, recording captures into `store`.
 pub async fn execute(code: String, store: CaptureStore) -> Result<()> {

@@ -413,6 +413,10 @@ function stopEval() {
   }
   evalGen++; // poison any in-flight or queued result
   pending = false;
+  // Reach across to V8 and actually terminate execution — without this, an
+  // infinite loop keeps the worker thread pinned even after the user clicks
+  // Stop, and every subsequent keystroke queues another doomed eval behind it.
+  invoke("stop_eval").catch(() => {});
   setStatus("stopped", "ready");
 }
 

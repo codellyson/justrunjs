@@ -10,6 +10,9 @@
 mod instrument;
 mod loader;
 mod runtime;
+mod worker;
+
+pub use worker::EvalWorker;
 
 use anyhow::Result;
 use serde::Serialize;
@@ -43,7 +46,7 @@ pub fn instrument_only(source: &str) -> Result<String> {
     instrument::transpile_and_instrument(source)
 }
 
-fn group_by_line(captures: &[(u32, String)]) -> Vec<LineResult> {
+pub(crate) fn group_by_line(captures: &[(u32, String)]) -> Vec<LineResult> {
     let mut out: Vec<LineResult> = Vec::new();
     for (line, display) in captures {
         match out.iter_mut().find(|r| r.line == *line) {
