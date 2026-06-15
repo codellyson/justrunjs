@@ -112,10 +112,15 @@ fn instrument_stmt(stmt: &mut Stmt, cm: &Lrc<SourceMap>) {
         // Bare expression statement: `foo + 1;`  /  `await fetch(...)`
         // -> `__capture(line, foo + 1);`
         //
-        // Exception: skip top-level `console.X(...)` calls. The console methods
-        // are overridden in inspector.js to capture their args directly — if we
-        // also wrapped, we'd emit a redundant `undefined` (the log call's
-        // return value) for the same line.
+        // We do NOT wrap variable declarations (`const x = …`). Declaring a
+        // variable shouldn't dump its value into the results pane unless the
+        // user explicitly references it on its own line. Matches the web
+        // editor's Babel-side behaviour.
+        //
+        // Exception: skip top-level `console.X(...)` calls. The console
+        // methods are overridden in inspector.js to capture their args
+        // directly — if we also wrapped, we'd emit a redundant `undefined`
+        // (the log call's return value) for the same line.
         Stmt::Expr(expr_stmt) => {
             if is_console_call(&expr_stmt.expr) {
                 return;
@@ -123,16 +128,6 @@ fn instrument_stmt(stmt: &mut Stmt, cm: &Lrc<SourceMap>) {
             let line = line_of(cm, expr_stmt.span);
             let inner = std::mem::replace(&mut expr_stmt.expr, undefined_expr());
             expr_stmt.expr = Box::new(capture_call(line, inner));
-        }
-        // Variable declaration: `const x = 5;` -> `const x = __capture(line, 5);`
-        // Each declarator is captured at its own line.
-        Stmt::Decl(Decl::Var(var)) => {
-            for decl in var.decls.iter_mut() {
-                if let Some(init) = decl.init.take() {
-                    let line = line_of(cm, decl.span);
-                    decl.init = Some(Box::new(capture_call(line, init)));
-                }
-            }
         }
         _ => {}
     }

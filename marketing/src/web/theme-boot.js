@@ -10,6 +10,11 @@ import { BUILT_IN_THEMES, DEFAULT_THEME_ID, VAR_MAP } from "./theme-plugins.js";
 
 const themes = Object.fromEntries(BUILT_IN_THEMES.map((t) => [t.id, t]));
 
+// Expose the catalog so ThemeToggle.astro's picker can drive swaps. The
+// marketing Layout.astro sets the same global; doing it here too means the
+// picker also works on the editor page and inside the Tauri shell.
+window.__RUNJS_THEMES__ = themes;
+
 function pickMode() {
   const stored = localStorage.getItem("runjs.theme.mode");
   if (stored === "light" || stored === "dark") return stored;

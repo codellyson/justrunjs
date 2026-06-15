@@ -24,6 +24,10 @@
     "@codemirror/view": "^6.39.15",
     "@lezer/highlight": "^1.2.3",
     "@babel/standalone": "^7.26.4",
-    "prettier": "^3.4.2"
+    "prettier": "^3.4.2",
+    "@codemirror/lint": "^6.8.4",
+    "typescript": "^5.7.2",
+    "@typescript/vfs": "^1.6.0",
+    "@valtown/codemirror-ts": "^2.3.1"
   }
 }

@@ -104,6 +104,70 @@ function instrumentPlugin({ types: t }) {
   };
 }
 
+// Catch a common footgun: `import _ from "npm:date-fns"` against a package
+// with no default export silently binds `_` to undefined, and the user
+// hits a confusing `Cannot read properties of undefined` later. After the
+// module loads, throw a friendly error explaining what to use instead.
+//
+// Only checks external packages (`npm:`, bare specifiers, http(s)) — relative
+// imports point at the user's own code and the "use named imports" advice
+// doesn't apply.
+function checkDefaultExportsPlugin({ types: t }) {
+  const isExternal = (spec) =>
+    spec.startsWith("npm:") ||
+    spec.startsWith("http://") ||
+    spec.startsWith("https://") ||
+    /^[a-zA-Z@]/.test(spec) &&
+      !spec.startsWith("./") &&
+      !spec.startsWith("../") &&
+      !spec.startsWith("/");
+
+  const friendlyMsg = (name, source) =>
+    `"${source}" has no default export. Try \`import { /* names */ } from "${source}"\` or \`import * as ${name} from "${source}"\` instead.`;
+
+  return {
+    visitor: {
+      Program(path) {
+        const checks = [];
+        let lastImportIdx = -1;
+        const body = path.get("body");
+        for (let i = 0; i < body.length; i++) {
+          const stmt = body[i];
+          if (!stmt.isImportDeclaration()) continue;
+          lastImportIdx = i;
+          const source = stmt.node.source.value;
+          if (!isExternal(source)) continue;
+          for (const specifier of stmt.node.specifiers) {
+            if (specifier.type !== "ImportDefaultSpecifier") continue;
+            const name = specifier.local.name;
+            checks.push(
+              t.ifStatement(
+                t.binaryExpression(
+                  "===",
+                  t.identifier(name),
+                  t.identifier("undefined"),
+                ),
+                t.blockStatement([
+                  t.throwStatement(
+                    t.newExpression(t.identifier("Error"), [
+                      t.stringLiteral(friendlyMsg(name, source)),
+                    ]),
+                  ),
+                ]),
+              ),
+            );
+          }
+        }
+        if (checks.length === 0 || lastImportIdx < 0) return;
+        // Insert in reverse so each `insertAfter` lands at the right index.
+        for (let i = checks.length - 1; i >= 0; i--) {
+          body[lastImportIdx].insertAfter(checks[i]);
+        }
+      },
+    },
+  };
+}
+
 // Rewrite `npm:foo` and bare specifiers to esm.sh URLs. Mirrors the desktop
 // loader's npm: handling and adds bare-specifier resolution as a convenience.
 // Absolute http(s):, ./relative, and data: URLs pass through.
@@ -134,7 +198,10 @@ function transpileAs(source, sourceType) {
     filename: "user.ts",
     sourceType, // "module" or "script"
     presets: [["typescript", { allExtensions: true, isTSX: false }]],
-    plugins: [instrumentPlugin, rewriteImportsPlugin],
+    // Order matters: checkDefaultExportsPlugin needs to see the original
+    // `npm:foo` / bare specifier in the error message, so it runs BEFORE
+    // rewriteImportsPlugin replaces those with esm.sh URLs.
+    plugins: [instrumentPlugin, checkDefaultExportsPlugin, rewriteImportsPlugin],
     sourceMaps: false,
     retainLines: true,
   });

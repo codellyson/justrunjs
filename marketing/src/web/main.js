@@ -129,7 +129,9 @@ const editorTheme = EditorView.theme(
     "&": {
       backgroundColor: "rgb(var(--bg))",
       height: "100%",
-      fontSize: "14px",
+      // Read from a CSS custom property so the settings popover can change
+      // the font size without rebuilding the editor's theme.
+      fontSize: "var(--editor-font-size, 14px)",
     },
     ".cm-content": {
       fontFamily: "var(--font-mono)",
@@ -231,6 +233,38 @@ function highlightFor(mode) {
 
 const highlightCompartment = new Compartment();
 const languageCompartment = new Compartment();
+const tabSizeCompartment = new Compartment();
+const wordWrapCompartment = new Compartment();
+// Empty until the async TS environment finishes booting (lib files load
+// from the CDN); then reconfigured with tsFacet/tsSync/tsLinter/...
+const tsCompartment = new Compartment();
+
+// --- persisted settings (read at boot, written by settings popover) -------
+const FONT_SIZE_KEY = "runjs.fontSize";
+const TAB_SIZE_KEY = "runjs.tabSize";
+const WORD_WRAP_KEY = "runjs.wordWrap";
+const AUTO_EVAL_KEY = "runjs.autoEval";
+
+function readInt(key, fallback) {
+  const v = parseInt(localStorage.getItem(key) || "", 10);
+  return Number.isFinite(v) ? v : fallback;
+}
+function readBool(key, fallback) {
+  const v = localStorage.getItem(key);
+  if (v === null) return fallback;
+  return v !== "false";
+}
+
+let fontSize = readInt(FONT_SIZE_KEY, 14);
+let tabSize = readInt(TAB_SIZE_KEY, 2);
+let wordWrap = readBool(WORD_WRAP_KEY, true);
+let autoEval = readBool(AUTO_EVAL_KEY, true);
+
+// Apply font size before editor mount so first paint is at the right size.
+document.documentElement.style.setProperty(
+  "--editor-font-size",
+  fontSize + "px",
+);
 
 function currentMode() {
   return document.documentElement.dataset.themeMode === "light"
@@ -245,9 +279,9 @@ const editor = new EditorView({
     doc: _bootTab.content,
     extensions: [
       basicSetup,
-      EditorView.lineWrapping,
+      wordWrapCompartment.of(wordWrap ? EditorView.lineWrapping : []),
       indentUnit.of("  "),
-      EditorState.tabSize.of(2),
+      tabSizeCompartment.of(EditorState.tabSize.of(tabSize)),
       keymap.of([
         indentWithTab,
         {
@@ -266,6 +300,11 @@ const editor = new EditorView({
         },
       ]),
       languageCompartment.of(languageExt(_bootTab.language)),
+      // Prec.highest so the TS extensions outrank basicSetup's bundled
+      // `autocompletion()` (otherwise its config — no `override` — wins the
+      // facet merge and tsAutocomplete never gets called). Same reason for
+      // why we wrap the highlight compartment in Prec.highest above.
+      Prec.highest(tsCompartment.of([])),
       // Prec.highest forces our palette ahead of the editor theme's scoped
       // colour rules (the theme is .cm-editor.ͼXYZ-scoped, syntax tags are
       // unscoped class selectors at lower default specificity).
@@ -359,57 +398,101 @@ function paintResults() {
   }
 }
 
-// --- worker bridge -------------------------------------------------------
+// --- eval transport ------------------------------------------------------
+// The editor talks to the eval engine through a thin `{ evaluate, stop }`
+// interface. Two implementations:
+//   - Tauri: routes through #[tauri::command] invoke('evaluate_source') and
+//     invoke('stop_eval') — the long-lived V8 worker thread on the Rust side.
+//   - Browser: posts to a Web Worker that runs @babel/standalone + dynamic
+//     import on a Blob URL.
+// The desktop and web surfaces now share one editor; only this transport
+// changes.
 
-let worker = null;
-let workerReady = null; // Promise resolved when the worker posts "ready".
-let pendingReplies = new Map(); // id -> { resolve, reject }
-let evalSeq = 0;
+const tauriCore =
+  typeof window !== "undefined" && window.__TAURI__ && window.__TAURI__.core;
 
-function spawnWorker() {
-  let resolveReady, rejectReady;
-  workerReady = new Promise((res, rej) => {
-    resolveReady = res;
-    rejectReady = rej;
-  });
-  worker = new Worker(new URL("./worker.js", import.meta.url), {
-    type: "module",
-  });
-  worker.onmessage = (e) => {
-    const data = e.data || {};
-    if (data.type === "ready") {
-      resolveReady();
-      return;
-    }
-    const { id, ok, results, error, ms } = data;
-    const entry = pendingReplies.get(id);
-    if (!entry) return;
-    pendingReplies.delete(id);
-    if (ok) entry.resolve({ results, ms });
-    else entry.reject(new Error(error || "eval failed"));
-  };
-  worker.onerror = (e) => {
-    // ErrorEvent.message is often empty in module workers; fall back to the
-    // event itself so we at least surface "something broke."
-    const msg = e.message || (e.filename ? `${e.filename}:${e.lineno}` : "worker failed to start");
-    rejectReady(new Error(msg));
-    // Reject any in-flight eval too so the UI doesn't stay stuck on "running…".
-    for (const [, entry] of pendingReplies) entry.reject(new Error(msg));
-    pendingReplies.clear();
-  };
-  worker.onmessageerror = () => {
-    rejectReady(new Error("worker message channel error"));
+const transport = tauriCore
+  ? createTauriTransport(tauriCore)
+  : createWorkerTransport();
+
+function createTauriTransport(core) {
+  return {
+    async evaluate(source) {
+      const t0 = performance.now();
+      const results = await core.invoke("evaluate_source", { source });
+      return { results, ms: Math.round(performance.now() - t0) };
+    },
+    stop() {
+      // Fire-and-forget — the V8 worker calls terminate_execution()
+      // synchronously from another thread; we don't need to await it.
+      core.invoke("stop_eval").catch(() => {});
+    },
   };
 }
-spawnWorker();
 
-async function evalInWorker(source) {
-  await workerReady; // block first eval until imports/init succeeded
-  const id = ++evalSeq;
-  return new Promise((resolve, reject) => {
-    pendingReplies.set(id, { resolve, reject });
-    worker.postMessage({ id, source });
-  });
+function createWorkerTransport() {
+  let worker = null;
+  let workerReady = null;
+  const pendingReplies = new Map();
+  let evalSeq = 0;
+
+  function spawn() {
+    let resolveReady, rejectReady;
+    workerReady = new Promise((res, rej) => {
+      resolveReady = res;
+      rejectReady = rej;
+    });
+    worker = new Worker(new URL("./worker.js", import.meta.url), {
+      type: "module",
+    });
+    worker.onmessage = (e) => {
+      const data = e.data || {};
+      if (data.type === "ready") {
+        resolveReady();
+        return;
+      }
+      const { id, ok, results, error, ms } = data;
+      const entry = pendingReplies.get(id);
+      if (!entry) return;
+      pendingReplies.delete(id);
+      if (ok) entry.resolve({ results, ms });
+      else entry.reject(new Error(error || "eval failed"));
+    };
+    worker.onerror = (e) => {
+      const msg =
+        e.message ||
+        (e.filename ? `${e.filename}:${e.lineno}` : "worker failed to start");
+      rejectReady(new Error(msg));
+      for (const [, entry] of pendingReplies) entry.reject(new Error(msg));
+      pendingReplies.clear();
+    };
+    worker.onmessageerror = () => {
+      rejectReady(new Error("worker message channel error"));
+    };
+  }
+  spawn();
+
+  return {
+    async evaluate(source) {
+      await workerReady;
+      const id = ++evalSeq;
+      return new Promise((resolve, reject) => {
+        pendingReplies.set(id, { resolve, reject });
+        worker.postMessage({ id, source });
+      });
+    },
+    stop() {
+      // The browser equivalent of v8 terminate_execution(): nuke the worker
+      // and immediately spawn a replacement so the next keystroke doesn't
+      // wait for a cold start.
+      if (worker) {
+        for (const [, entry] of pendingReplies) entry.reject(new Error("stopped"));
+        pendingReplies.clear();
+        worker.terminate();
+      }
+      spawn();
+    },
+  };
 }
 
 // --- eval pipeline -------------------------------------------------------
@@ -429,7 +512,7 @@ async function runEval() {
   const source = editor.state.doc.toString();
   setStatus("running…", "running");
   try {
-    const { results, ms } = await evalInWorker(source);
+    const { results, ms } = await transport.evaluate(source);
     if (myGen !== evalGen) return; // Stop cancelled this eval mid-flight.
     lastError = null;
     lastResults = results;
@@ -462,23 +545,42 @@ function stopEval() {
   evalGen++;
   pending = false;
   inFlight = false;
-  // The browser equivalent of v8 terminate_execution() — nuke the worker and
-  // immediately spawn a replacement so the next keystroke isn't waiting.
-  if (worker) {
-    for (const [, entry] of pendingReplies) entry.reject(new Error("stopped"));
-    pendingReplies.clear();
-    worker.terminate();
-  }
-  spawnWorker();
+  transport.stop();
   setStatus("stopped", "ready");
 }
 
 function schedule() {
   if (timer) clearTimeout(timer);
+  // Auto-evaluate can be turned off in settings — typing still updates the
+  // buffer, but the user has to hit Run / Cmd+Enter to evaluate.
+  if (!autoEval) return;
   timer = setTimeout(runEval, 300);
 }
 
 runEval();
+
+// --- IntelliSense (async boot) -------------------------------------------
+// Load TypeScript + lib.*.d.ts files in the background; once the virtual
+// environment is ready, swap in the IntelliSense extensions through the
+// pre-installed Compartment. The editor stays fully usable during boot —
+// the user just doesn't get type info / autocomplete until this resolves.
+(async () => {
+  setStatus("loading IntelliSense…", "running");
+  try {
+    const { createTsEnv } = await import("./ts-env.js");
+    const { extensions } = await createTsEnv();
+    editor.dispatch({
+      effects: tsCompartment.reconfigure(extensions),
+    });
+    setStatus("IntelliSense ready", "ok");
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    setStatus("IntelliSense failed: " + msg, "error");
+    // Re-throw so the boot-error overlay shows the full stack — this is the
+    // only way we can debug remote failures right now.
+    throw e;
+  }
+})();
 
 // --- sidebar wiring ------------------------------------------------------
 
@@ -495,15 +597,19 @@ document.getElementById("btn-stop").addEventListener("click", stopEval);
 // --- embed mode ----------------------------------------------------------
 // When this page is loaded inside an iframe on the marketing site, we hide
 // the home/back button (the parent already provides chrome) and surface a
-// fullscreen toggle that posts to the parent. Detection works two ways:
-// presence of `?embed=1` in the URL, OR a parent window that isn't us.
+// fullscreen toggle that posts to the parent. Detection: `?embed=1`, OR a
+// parent window that isn't us. Also hide the home button when running under
+// Tauri — the desktop shell has no marketing page to navigate back to.
 const isEmbedded =
   new URLSearchParams(window.location.search).get("embed") === "1" ||
   window.parent !== window;
 
-if (isEmbedded) {
+if (isEmbedded || tauriCore) {
   const home = document.getElementById("btn-home");
   if (home) home.style.display = "none";
+}
+
+if (isEmbedded) {
   const expand = document.getElementById("btn-expand");
   if (expand) {
     expand.classList.remove("hidden");
@@ -679,17 +785,19 @@ function renderTabs() {
 renderTabs();
 
 // --- settings popover ----------------------------------------------------
+// Single panel: Appearance (theme picker + light/dark mode) and Editor
+// (font size, tab size, line numbers, word wrap, auto-evaluate). All values
+// persist to localStorage under runjs.* keys.
 
 const SHOW_LINE_NUMBERS_KEY = "runjs.showLineNumbers";
-let showLineNumbers = localStorage.getItem(SHOW_LINE_NUMBERS_KEY) !== "false";
+let showLineNumbers = readBool(SHOW_LINE_NUMBERS_KEY, true);
+document.body.classList.toggle("hide-line-numbers", !showLineNumbers);
 
 const settingsBtn = document.getElementById("btn-settings");
 const popover = document.getElementById("settings-popover");
-const lineNumbersToggle = document.getElementById("opt-line-numbers");
 
-if (settingsBtn && popover && lineNumbersToggle) {
-  lineNumbersToggle.checked = showLineNumbers;
-
+if (settingsBtn && popover) {
+  // Open/close
   settingsBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     popover.classList.toggle("hidden");
@@ -700,15 +808,141 @@ if (settingsBtn && popover && lineNumbersToggle) {
     popover.classList.add("hidden");
   });
 
-  lineNumbersToggle.addEventListener("change", () => {
-    showLineNumbers = lineNumbersToggle.checked;
-    localStorage.setItem(SHOW_LINE_NUMBERS_KEY, String(showLineNumbers));
-    // basicSetup already includes line numbers + active-line gutter, so we
-    // can't toggle just those via a compartment without rebuilding. Simpler:
-    // hide/show via CSS class on the editor.
-    document.body.classList.toggle("hide-line-numbers", !showLineNumbers);
+  // --- Appearance: theme picker + mode toggle -----------------------------
+  const VAR_MAP = {
+    bg: "--bg",
+    bgSecondary: "--bg-secondary",
+    border: "--border",
+    textPrimary: "--text-primary",
+    textSecondary: "--text-secondary",
+    textMuted: "--text-muted",
+    accent: "--accent",
+    accentHover: "--accent-hover",
+    accentText: "--accent-text",
+    danger: "--danger",
+    success: "--success",
+    warning: "--warning",
+  };
+  function getThemes() { return window.__RUNJS_THEMES__ || {}; }
+  function currentThemeId() {
+    return document.documentElement.dataset.themeId || "espresso";
+  }
+  function currentThemeMode() {
+    return document.documentElement.dataset.themeMode === "light"
+      ? "light"
+      : "dark";
+  }
+  function applyVariant(variant, mode) {
+    const root = document.documentElement;
+    for (const k in VAR_MAP) {
+      if (variant[k]) root.style.setProperty(VAR_MAP[k], variant[k]);
+    }
+    if (mode === "dark") root.classList.add("dark");
+    else root.classList.remove("dark");
+  }
+  function applyTheme(themeId, mode) {
+    const themes = getThemes();
+    const theme = themes[themeId];
+    if (!theme) return;
+    applyVariant(mode === "dark" ? theme.dark : theme.light, mode);
+    document.documentElement.dataset.themeId = themeId;
+    document.documentElement.dataset.themeMode = mode;
+    try {
+      localStorage.setItem("runjs.theme.id", themeId);
+      localStorage.setItem("runjs.theme.mode", mode);
+    } catch {}
+    refreshAppearanceUI();
+  }
+  function refreshAppearanceUI() {
+    const id = currentThemeId();
+    const mode = currentThemeMode();
+    popover.querySelectorAll("[data-mode-label]").forEach((el) => {
+      el.classList.toggle("hidden", el.dataset.modeLabel !== mode);
+    });
+    popover.querySelectorAll(".theme-option").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.themeOption === id);
+    });
+  }
+
+  const modeToggleBtn = document.getElementById("settings-mode-toggle");
+  if (modeToggleBtn) {
+    modeToggleBtn.addEventListener("click", () => {
+      const next = currentThemeMode() === "dark" ? "light" : "dark";
+      applyTheme(currentThemeId(), next);
+    });
+  }
+  popover.querySelectorAll(".theme-option").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      applyTheme(btn.dataset.themeOption, currentThemeMode());
+    });
   });
-  document.body.classList.toggle("hide-line-numbers", !showLineNumbers);
+  refreshAppearanceUI();
+
+  // --- Editor: font size --------------------------------------------------
+  const fontSizeInput = document.getElementById("opt-font-size");
+  if (fontSizeInput) {
+    fontSizeInput.value = String(fontSize);
+    fontSizeInput.addEventListener("change", () => {
+      const v = Math.max(10, Math.min(24, parseInt(fontSizeInput.value, 10) || 14));
+      fontSize = v;
+      fontSizeInput.value = String(v);
+      localStorage.setItem(FONT_SIZE_KEY, String(v));
+      document.documentElement.style.setProperty("--editor-font-size", v + "px");
+    });
+  }
+
+  // --- Editor: tab size ---------------------------------------------------
+  popover.querySelectorAll('input[name="opt-tab-size"]').forEach((radio) => {
+    radio.checked = parseInt(radio.value, 10) === tabSize;
+    radio.addEventListener("change", () => {
+      if (!radio.checked) return;
+      tabSize = parseInt(radio.value, 10);
+      localStorage.setItem(TAB_SIZE_KEY, String(tabSize));
+      editor.dispatch({
+        effects: tabSizeCompartment.reconfigure(EditorState.tabSize.of(tabSize)),
+      });
+    });
+  });
+
+  // --- Editor: line numbers -----------------------------------------------
+  const lineNumbersToggle = document.getElementById("opt-line-numbers");
+  if (lineNumbersToggle) {
+    lineNumbersToggle.checked = showLineNumbers;
+    lineNumbersToggle.addEventListener("change", () => {
+      showLineNumbers = lineNumbersToggle.checked;
+      localStorage.setItem(SHOW_LINE_NUMBERS_KEY, String(showLineNumbers));
+      document.body.classList.toggle("hide-line-numbers", !showLineNumbers);
+    });
+  }
+
+  // --- Editor: word wrap --------------------------------------------------
+  const wordWrapToggle = document.getElementById("opt-word-wrap");
+  if (wordWrapToggle) {
+    wordWrapToggle.checked = wordWrap;
+    wordWrapToggle.addEventListener("change", () => {
+      wordWrap = wordWrapToggle.checked;
+      localStorage.setItem(WORD_WRAP_KEY, String(wordWrap));
+      editor.dispatch({
+        effects: wordWrapCompartment.reconfigure(
+          wordWrap ? EditorView.lineWrapping : [],
+        ),
+      });
+    });
+  }
+
+  // --- Editor: auto-evaluate ----------------------------------------------
+  const autoEvalToggle = document.getElementById("opt-auto-eval");
+  if (autoEvalToggle) {
+    autoEvalToggle.checked = autoEval;
+    autoEvalToggle.addEventListener("change", () => {
+      autoEval = autoEvalToggle.checked;
+      localStorage.setItem(AUTO_EVAL_KEY, String(autoEval));
+      if (!autoEval && timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    });
+  }
 }
 
 // --- formatter (Prettier) -----------------------------------------------

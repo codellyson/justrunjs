@@ -427,19 +427,29 @@ main {
   position: fixed;
   left: 56px;
   bottom: 12px;
-  min-width: 220px;
+  width: 300px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
   background: rgb(var(--bg-secondary));
   border: 1px solid rgb(var(--border));
   border-radius: 6px;
-  padding: 8px 0;
+  padding: 4px 0;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   z-index: 10;
   font-size: 13px;
+  color: rgb(var(--text-primary));
   user-select: none;
 }
 
 .settings-popover.hidden {
   display: none;
+}
+
+.settings-section {
+  padding: 6px 0 8px;
+}
+.settings-section + .settings-section {
+  border-top: 1px solid rgb(var(--border));
 }
 
 .settings-title {
@@ -459,6 +469,8 @@ main {
   cursor: pointer;
 }
 
+.settings-row.settings-row-inline { cursor: default; }
+
 .settings-row:hover {
   background: rgb(var(--text-primary) / 0.04);
 }
@@ -467,6 +479,117 @@ main {
   accent-color: rgb(var(--accent));
   cursor: pointer;
 }
+
+.settings-row input[type="number"] {
+  width: 56px;
+  padding: 3px 6px;
+  border: 1px solid rgb(var(--border));
+  border-radius: 4px;
+  background: rgb(var(--bg));
+  color: rgb(var(--text-primary));
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.settings-row input[type="number"]:focus {
+  outline: none;
+  border-color: rgb(var(--accent));
+}
+
+.settings-segmented {
+  display: flex;
+  border: 1px solid rgb(var(--border));
+  border-radius: 4px;
+  overflow: hidden;
+}
+.settings-segmented label {
+  position: relative;
+  cursor: pointer;
+}
+.settings-segmented label input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.settings-segmented label span {
+  display: inline-block;
+  padding: 3px 12px;
+  color: rgb(var(--text-secondary));
+  font-variant-numeric: tabular-nums;
+}
+.settings-segmented label + label span {
+  border-left: 1px solid rgb(var(--border));
+}
+.settings-segmented label input:checked + span {
+  background: rgb(var(--accent) / 0.18);
+  color: rgb(var(--text-primary));
+}
+
+/* Mode toggle ("Switch to dark/light") button. */
+.settings-mode-btn {
+  display: block;
+  width: calc(100% - 28px);
+  margin: 4px 14px 8px;
+  padding: 6px 10px;
+  text-align: left;
+  font: inherit;
+  background: rgb(var(--bg));
+  color: rgb(var(--text-primary));
+  border: 1px solid rgb(var(--border));
+  border-radius: 4px;
+  cursor: pointer;
+}
+.settings-mode-btn:hover { background: rgb(var(--text-primary) / 0.04); }
+.settings-mode-btn .hidden { display: none; }
+
+/* Theme list inside Appearance. */
+.settings-themes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.theme-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: rgb(var(--text-secondary));
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.theme-option:hover {
+  background: rgb(var(--text-primary) / 0.04);
+  color: rgb(var(--text-primary));
+}
+.theme-option.active {
+  border-color: rgb(var(--accent));
+  background: rgb(var(--accent) / 0.1);
+  color: rgb(var(--text-primary));
+}
+.theme-swatch {
+  flex-shrink: 0;
+  width: 28px;
+  height: 18px;
+  border: 1px solid rgb(var(--border));
+  border-radius: 3px;
+  overflow: hidden;
+  display: flex;
+}
+.theme-name { flex: 1 1 auto; }
+.theme-check {
+  flex-shrink: 0;
+  color: rgb(var(--accent));
+  font-size: 12px;
+  visibility: hidden;
+}
+.theme-option.active .theme-check { visibility: visible; }
 
 /* Line-numbers toggle. basicSetup hard-wires lineNumbers, so rather than
  * rebuilding the editor through a Compartment we just hide the gutter. */

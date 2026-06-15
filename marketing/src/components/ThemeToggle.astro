@@ -105,7 +105,11 @@ import { BUILT_IN_THEMES } from '../lib/theme-plugins';
     // The boot script already wrote tokens before paint; we just need a copy
     // of the theme data to drive the picker. Re-use the global stamped by
     // Layout.astro's boot script.
-    var THEMES = window.__RUNJS_THEMES__;
+    // Resolve on each call rather than caching at init. The /web/ editor
+    // page's theme-boot.js (a deferred module script) sets this AFTER our
+    // inline script has already run, so a captured value would always be
+    // undefined and clicks would silently no-op.
+    function getThemes() { return window.__RUNJS_THEMES__; }
 
     function currentThemeId() {
       return THEME_DATA_EL.dataset.themeId || "espresso";
@@ -123,8 +127,9 @@ import { BUILT_IN_THEMES } from '../lib/theme-plugins';
     }
 
     function applyTheme(themeId, mode) {
-      if (!THEMES || !THEMES[themeId]) return;
-      var theme = THEMES[themeId];
+      var themes = getThemes();
+      if (!themes || !themes[themeId]) return;
+      var theme = themes[themeId];
       applyVariant(mode === "dark" ? theme.dark : theme.light, mode);
       THEME_DATA_EL.dataset.themeId = themeId;
       THEME_DATA_EL.dataset.themeMode = mode;

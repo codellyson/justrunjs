@@ -4,13 +4,16 @@
   "version": "0.1.0",
   "identifier": "rs.runjs.scratchpad",
   "build": {
-    "frontendDist": "./ui"
+    "frontendDist": "./marketing/dist",
+    "beforeDevCommand": "pnpm build",
+    "beforeBuildCommand": "pnpm build"
   },
   "app": {
     "withGlobalTauri": true,
     "windows": [
       {
         "title": "justrunjs",
+        "url": "web/index.html",
         "width": 1100,
         "height": 720,
         "resizable": true,

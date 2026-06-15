@@ -3,7 +3,13 @@
 // @lezer/highlight, @babel/standalone) so module dedup is guaranteed. The
 // editor markup is rendered server-side; the runtime mounts in a `client:load`
 // script tag below.
+//
+// global.css runs Tailwind so the floating ThemeToggle's utility classes
+// (fixed/bottom-4/etc) resolve here too — without it the picker renders
+// unstyled and ends up invisible in the page corner.
+import "../../styles/global.css";
 import "../../web/style.css";
+import { BUILT_IN_THEMES } from "../../lib/theme-plugins";
 ---
 
 <!doctype html>
@@ -102,11 +108,66 @@ import "../../web/style.css";
     </main>
 
     <div id="settings-popover" class="settings-popover hidden" role="dialog" aria-label="Settings">
-      <div class="settings-title">Editor</div>
-      <label class="settings-row">
-        <span>Show line numbers</span>
-        <input type="checkbox" id="opt-line-numbers" />
-      </label>
+      <div class="settings-section">
+        <div class="settings-title">Appearance</div>
+
+        <button id="settings-mode-toggle" type="button" class="settings-mode-btn">
+          <span data-mode-label="light">Switch to dark</span>
+          <span data-mode-label="dark" class="hidden">Switch to light</span>
+        </button>
+
+        <div class="settings-themes">
+          {
+            BUILT_IN_THEMES.map((t) => (
+              <button
+                type="button"
+                class="theme-option"
+                data-theme-option={t.id}
+                title={t.label}
+              >
+                <span class="theme-swatch" aria-hidden="true">
+                  <span style={`background-color: ${t.swatch.dark}; flex: 1;`} />
+                  <span style={`background-color: ${t.swatch.light}; flex: 1;`} />
+                </span>
+                <span class="theme-name">{t.label}</span>
+                <span class="theme-check" aria-label="Active">✓</span>
+              </button>
+            ))
+          }
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-title">Editor</div>
+
+        <div class="settings-row settings-row-inline">
+          <span>Font size</span>
+          <input type="number" id="opt-font-size" min="10" max="24" step="1" />
+        </div>
+
+        <div class="settings-row settings-row-inline">
+          <span>Tab size</span>
+          <div class="settings-segmented">
+            <label><input type="radio" name="opt-tab-size" value="2" /><span>2</span></label>
+            <label><input type="radio" name="opt-tab-size" value="4" /><span>4</span></label>
+          </div>
+        </div>
+
+        <label class="settings-row">
+          <span>Show line numbers</span>
+          <input type="checkbox" id="opt-line-numbers" />
+        </label>
+
+        <label class="settings-row">
+          <span>Word wrap</span>
+          <input type="checkbox" id="opt-word-wrap" />
+        </label>
+
+        <label class="settings-row">
+          <span>Auto-evaluate on type</span>
+          <input type="checkbox" id="opt-auto-eval" />
+        </label>
+      </div>
     </div>
 
     <script>

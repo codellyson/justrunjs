@@ -78,6 +78,8 @@ mod tests {
 
     #[test]
     fn primitives_and_expressions() {
+        // Variable declarations no longer capture — only bare expression
+        // statements do.
         let src = "\
 const x = 5;
 const y = x * 2;
@@ -85,8 +87,6 @@ x + y;
 'hello'.toUpperCase();
 ";
         let r = evaluate(src).unwrap();
-        assert_eq!(find(&r, 1), "5");
-        assert_eq!(find(&r, 2), "10");
         assert_eq!(find(&r, 3), "15");
         assert_eq!(find(&r, 4), "'HELLO'");
     }
@@ -151,7 +151,7 @@ u;
 ids.length;
 ";
         let r = evaluate(src).unwrap();
-        assert_eq!(find(&r, 2), "{ id: 1, name: 'Ada' }");
+        // Only bare references emit captures, not the declarations themselves.
         assert_eq!(find(&r, 4), "{ id: 1, name: 'Ada' }");
         assert_eq!(find(&r, 5), "3");
     }
@@ -163,7 +163,7 @@ const v = await Promise.resolve(42);
 v + 1;
 ";
         let r = evaluate(src).unwrap();
-        assert_eq!(find(&r, 1), "42");
+        // Declaration doesn't capture; bare expression on line 2 does.
         assert_eq!(find(&r, 2), "43");
     }
 
