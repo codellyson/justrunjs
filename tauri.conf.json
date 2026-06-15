@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "runjs-rs",
+  "productName": "justrunjs",
   "version": "0.1.0",
   "identifier": "rs.runjs.scratchpad",
   "build": {
@@ -10,7 +10,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "runjs-rs",
+        "title": "justrunjs",
         "width": 1100,
         "height": 720,
         "resizable": true,

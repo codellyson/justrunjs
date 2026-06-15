@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.astro/
+.wrangler/
+.env
+.env.*
+
+# Synced from ../web/ at predev/prebuild — see scripts/sync-web.mjs.
+public/web/

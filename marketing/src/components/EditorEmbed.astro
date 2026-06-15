@@ -1,0 +1,112 @@
+---
+// Embedded /web/ editor — same page, contained card by default, expands to
+// fullscreen on click. Iframe isolation keeps the editor's CodeMirror +
+// Web Worker + Babel stack off the marketing bundle, and `loading="lazy"`
+// holds the network spike until the user scrolls to it.
+//
+// The expand toggle lives inside the iframe (top-right of the results
+// pane). It posts {type: "toggle"} up to us; we flip the .expanded class
+// and post {type: "expanded" | "collapsed"} back so the iframe can flip
+// its icon. Esc collapses. The hero CTA also fires expand via the
+// data-action="open-editor" hook.
+---
+
+<section
+  id="playground"
+  aria-label="Try it in your browser"
+  class="max-w-[1200px] mx-auto px-4 sm:px-6 my-12 sm:my-16 scroll-mt-12"
+>
+  <div
+    id="editor-card"
+    class="relative rounded-xl border border-border overflow-hidden bg-bg-secondary shadow-2xl shadow-black/40 transition-shadow"
+    style="height: 540px;"
+  >
+    <iframe
+      id="editor-iframe"
+      src="/web/index.html?embed=1"
+      title="justrunjs editor — write JS or TS and see top-level values inline"
+      class="block w-full h-full bg-bg"
+      style="border: 0;"
+      loading="lazy"
+    ></iframe>
+  </div>
+  <p class="text-xs text-muted mt-2 text-center">
+    Press <kbd class="font-mono px-1.5 py-0.5 rounded border border-border bg-bg-secondary text-secondary">Esc</kbd> to collapse · Click the
+    <span aria-hidden="true">⛶</span> icon to expand
+  </p>
+</section>
+
+<style is:global>
+  #editor-card.expanded {
+    position: fixed;
+    inset: 0;
+    height: 100vh !important;
+    z-index: 100;
+    border-radius: 0;
+    border: 0;
+    max-width: none;
+  }
+  body.has-expanded-editor {
+    overflow: hidden;
+  }
+</style>
+
+<script is:inline>
+  (function () {
+    var card = document.getElementById("editor-card");
+    var iframe = document.getElementById("editor-iframe");
+    if (!card || !iframe) return;
+
+    function notify(type) {
+      try {
+        if (iframe.contentWindow) {
+          iframe.contentWindow.postMessage({ type: type }, "*");
+        }
+      } catch (_) {}
+    }
+
+    function expand() {
+      if (card.classList.contains("expanded")) return;
+      card.classList.add("expanded");
+      document.body.classList.add("has-expanded-editor");
+      notify("expanded");
+    }
+    function collapse() {
+      if (!card.classList.contains("expanded")) return;
+      card.classList.remove("expanded");
+      document.body.classList.remove("has-expanded-editor");
+      notify("collapsed");
+    }
+    function toggle() {
+      if (card.classList.contains("expanded")) collapse();
+      else expand();
+    }
+
+    // Messages from the embedded editor.
+    window.addEventListener("message", function (e) {
+      var d = e.data;
+      if (!d || typeof d !== "object") return;
+      if (d.type === "expand") expand();
+      else if (d.type === "collapse") collapse();
+      else if (d.type === "toggle") toggle();
+    });
+
+    // Hero / Download CTAs that want to "open" the playground — scroll to
+    // the card, then expand once it's roughly in view.
+    document
+      .querySelectorAll('[data-action="open-editor"]')
+      .forEach(function (el) {
+        el.addEventListener("click", function (e) {
+          e.preventDefault();
+          card.scrollIntoView({ behavior: "smooth", block: "start" });
+          // Smooth scroll on most browsers is ~300ms; give it a beat so the
+          // expand transition doesn't fight the scroll.
+          setTimeout(expand, 350);
+        });
+      });
+
+    window.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") collapse();
+    });
+  })();
+</script>

@@ -1,0 +1,473 @@
+/* Geist + Geist Mono via jsdelivr's @fontsource-variable mirror so the editor
+ * matches the marketing site without dragging a JS font loader into a plain
+ * static page. */
+@font-face {
+  font-family: "Geist Variable";
+  src: url("https://cdn.jsdelivr.net/npm/@fontsource-variable/geist@5.1.0/files/geist-latin-wght-normal.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist Mono Variable";
+  src: url("https://cdn.jsdelivr.net/npm/@fontsource-variable/geist-mono@5.1.0/files/geist-mono-latin-wght-normal.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/*
+ * Theme tokens — applied by theme-boot.js at startup. These :root values
+ * are the SSR/no-JS fallback (Espresso dark), so the page never paints
+ * unstyled even if the boot script fails.
+ */
+:root {
+  --bg: 22 20 18;
+  --bg-secondary: 37 33 30;
+  --border: 56 50 45;
+  --text-primary: 232 222 210;
+  --text-secondary: 178 167 152;
+  --text-muted: 124 114 102;
+  --accent: 168 180 220;
+  --accent-hover: 195 205 235;
+  --accent-text: 22 20 18;
+  --danger: 220 105 95;
+  --success: 165 195 130;
+  --warning: 230 195 115;
+
+  --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+  --font-sans: "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Hide Astro's dev toolbar inside the editor page — it injects a row of
+ * icons at the bottom-left that collides with the editor sidebar visually.
+ * The toolbar isn't included in production builds. */
+astro-dev-toolbar { display: none !important; }
+
+/*
+ * Unified scrollbars — see marketing/global.css for the rationale. The
+ * universal selector covers CodeMirror's .cm-scroller, the results pane,
+ * and anything else that opts into overflow scrolling.
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--border)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgb(var(--border));
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--text-muted));
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: rgb(var(--bg));
+  color: rgb(var(--text-primary));
+  font-family: var(--font-sans);
+}
+
+body {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  grid-template-rows: 100vh;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ---------- sidebar ---------- */
+
+#sidebar {
+  background: rgb(var(--bg-secondary));
+  border-right: 1px solid rgb(var(--border));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 0 10px;
+  gap: 2px;
+  user-select: none;
+}
+
+.icon-btn {
+  background: transparent;
+  border: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+  color: rgb(var(--text-muted));
+  transition: background 0.12s ease, color 0.12s ease, transform 0.05s ease;
+  padding: 0;
+  text-decoration: none;
+}
+
+.icon-btn:hover {
+  background: rgb(var(--bg) / 0.5);
+  color: rgb(var(--text-primary));
+}
+
+.icon-btn:active {
+  background: rgb(var(--border) / 0.5);
+  transform: scale(0.94);
+}
+
+#btn-run:hover { color: rgb(var(--accent)); }
+#btn-stop:hover { color: rgb(var(--danger)); }
+
+.sidebar-spacer {
+  flex: 1 1 auto;
+}
+
+.sidebar-status {
+  width: 32px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 2px;
+}
+
+.sidebar-status .status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgb(var(--text-muted));
+  transition: background 0.2s ease;
+}
+
+.sidebar-status.running .status-dot {
+  background: rgb(var(--warning));
+  animation: pulse 1.1s ease-in-out infinite;
+}
+
+.sidebar-status.ok .status-dot { background: rgb(var(--accent)); }
+.sidebar-status.error .status-dot { background: rgb(var(--danger)); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 1; }
+}
+
+/* ---------- main panes ---------- */
+
+main {
+  display: grid;
+  /* Equal 50/50 split between editor and results by default. The splitter
+   * can still be dragged at runtime; this just sets the starting ratio. */
+  grid-template-columns: 1fr 4px 1fr;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  position: relative;
+}
+
+#editor {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  /* 32px tab bar on top, editor fills the rest. */
+  display: grid;
+  grid-template-rows: 32px 1fr;
+}
+
+#editor-host {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  height: 100%;
+}
+
+#editor-host > .cm-editor {
+  height: 100%;
+  width: 100%;
+}
+
+/* Baseline text colour for unhighlighted tokens. Kept here (unscoped, low
+ * specificity) so EditorView.theme's scoped rules don't clobber it AND
+ * HighlightStyle's `.tok-keyword` etc. still win per-token. */
+.cm-content,
+.cm-line {
+  color: rgb(var(--text-primary));
+}
+
+#splitter {
+  background: transparent;
+  cursor: col-resize;
+}
+
+#results {
+  background: rgb(var(--bg));
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  line-height: 21px;
+  overflow: auto;
+  position: relative;
+  padding-top: 10px;
+  border-left: 1px solid rgb(var(--border));
+}
+
+/* Scrollbars handled by the universal rule below — both the results pane and
+ * CodeMirror's .cm-scroller pick it up automatically. */
+
+/* Floating expand button inside the results pane. Shown only in embed mode
+ * (main.js removes .hidden). Sits top-right so it doesn't fight the result
+ * rows below it. */
+#btn-expand {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 3;
+  background: transparent;
+  border: 0;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  cursor: pointer;
+  color: rgb(var(--text-muted));
+  transition: background 0.12s ease, color 0.12s ease;
+}
+#btn-expand:hover {
+  color: rgb(var(--text-primary));
+  background: rgb(var(--text-primary) / 0.04);
+}
+#btn-expand.hidden { display: none; }
+
+#btn-expand .icon-collapse { display: none; }
+#btn-expand.is-expanded .icon-expand { display: none; }
+#btn-expand.is-expanded .icon-collapse { display: block; }
+
+#results-inner { padding-bottom: 200px; }
+
+/* Flowing console layout: rows stack top-to-bottom in arrival order.
+ * Each visual line is its own row, including continuation lines of a
+ * pretty-printed object. */
+.result-row {
+  display: flex;
+  align-items: flex-start;
+  padding: 0 14px 0 0;
+  line-height: 21px;
+}
+
+.result-row:hover { background: rgb(var(--text-primary) / 0.025); }
+
+.result-row .seq {
+  width: 42px;
+  flex-shrink: 0;
+  color: rgb(var(--text-muted));
+  font-size: 12px;
+  text-align: right;
+  padding-right: 14px;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.result-row .value {
+  flex: 1 1 auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-width: 0;
+  color: rgb(var(--text-primary));
+}
+
+.result-row.error .value { color: rgb(var(--danger)); }
+
+/* Value-type accents. Pull from semantic theme tokens so they shift with the
+ * picked palette (e.g. Solarized strings ride the success token, Gruvbox
+ * numbers ride accent). They stay readable across every theme that way. */
+.v-string   { color: rgb(var(--success)); }
+.v-number   { color: rgb(var(--accent)); }
+.v-bigint   { color: rgb(var(--accent)); }
+.v-bool     { color: rgb(var(--accent)); }
+.v-null     { color: rgb(var(--text-muted)); font-style: italic; }
+.v-symbol   { color: rgb(var(--accent-hover)); }
+.v-object   { color: rgb(var(--text-secondary)); }
+.v-array    { color: rgb(var(--text-secondary)); }
+.v-function { color: rgb(var(--warning)); }
+
+.result-placeholder {
+  color: rgb(var(--text-muted));
+  font-style: italic;
+  padding: 24px 16px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+
+/* ---------- tab bar ---------- */
+
+#tabs {
+  display: flex;
+  align-items: stretch;
+  background: rgb(var(--bg-secondary));
+  border-bottom: 1px solid rgb(var(--border));
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  padding: 0 10px 0 12px;
+  font-size: 12px;
+  color: rgb(var(--text-secondary));
+  cursor: pointer;
+  border-right: 1px solid rgb(var(--border));
+  background: transparent;
+}
+
+.tab:hover {
+  background: rgb(var(--text-primary) / 0.025);
+  color: rgb(var(--text-primary));
+}
+
+.tab.active {
+  background: rgb(var(--bg));
+  color: rgb(var(--text-primary));
+}
+
+.tab .tab-lang {
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgb(var(--text-primary) / 0.07);
+  color: rgb(var(--text-muted));
+  text-transform: uppercase;
+  border: 0;
+  cursor: pointer;
+  font-family: var(--font-mono);
+}
+
+.tab .tab-lang:hover {
+  background: rgb(var(--text-primary) / 0.14);
+  color: rgb(var(--text-primary));
+}
+
+.tab .tab-name {
+  font-family: var(--font-mono);
+}
+
+.tab .tab-close {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  color: rgb(var(--text-muted));
+  font-size: 14px;
+  line-height: 1;
+  margin-left: 2px;
+}
+
+.tab .tab-close:hover {
+  background: rgb(var(--text-primary) / 0.1);
+  color: rgb(var(--text-primary));
+}
+
+.tab-add {
+  background: transparent;
+  border: 0;
+  color: rgb(var(--text-muted));
+  height: 100%;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  line-height: 1;
+  padding: 0 10px;
+  letter-spacing: 0.3px;
+}
+
+.tab-add:hover {
+  color: rgb(var(--text-primary));
+  background: rgb(var(--text-primary) / 0.03);
+}
+
+.tab-add.npm:hover {
+  color: #cb3837;
+}
+
+/* ---------- settings popover ---------- */
+
+.settings-popover {
+  position: fixed;
+  left: 56px;
+  bottom: 12px;
+  min-width: 220px;
+  background: rgb(var(--bg-secondary));
+  border: 1px solid rgb(var(--border));
+  border-radius: 6px;
+  padding: 8px 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 10;
+  font-size: 13px;
+  user-select: none;
+}
+
+.settings-popover.hidden {
+  display: none;
+}
+
+.settings-title {
+  padding: 4px 14px 6px;
+  color: rgb(var(--text-muted));
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.settings-row:hover {
+  background: rgb(var(--text-primary) / 0.04);
+}
+
+.settings-row input[type="checkbox"] {
+  accent-color: rgb(var(--accent));
+  cursor: pointer;
+}
+
+/* Line-numbers toggle. basicSetup hard-wires lineNumbers, so rather than
+ * rebuilding the editor through a Compartment we just hide the gutter. */
+body.hide-line-numbers .cm-gutters { display: none; }

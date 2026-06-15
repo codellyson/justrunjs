@@ -1,0 +1,130 @@
+---
+import '@fontsource-variable/geist';
+import '@fontsource-variable/geist-mono';
+import '../styles/global.css';
+import { BUILT_IN_THEMES, DEFAULT_THEME_ID } from '../lib/theme-plugins';
+
+interface Props {
+  title?: string;
+  description?: string;
+  /** Inline JSON-LD object — stringified into a <script type="application/ld+json"> tag. */
+  jsonLd?: Record<string, unknown> | Record<string, unknown>[];
+}
+
+// Theme catalog passed to the boot script. Astro's `define:vars` runs
+// JSON.stringify on each value before injection, so we hand it a plain
+// object — pre-stringifying would double-encode and the script would see a
+// JSON string instead of a real object (the "themes don't change" bug).
+const themeData = BUILT_IN_THEMES.reduce<Record<string, { light: Record<string, string>; dark: Record<string, string> }>>(
+  (acc, t) => {
+    acc[t.id] = { light: t.light as any, dark: t.dark as any };
+    return acc;
+  },
+  {},
+);
+
+const {
+  title = 'justrunjs — a JavaScript scratchpad with inline values.',
+  description = 'Type TypeScript or JavaScript. Every top-level value shows up next to its source line. Native desktop, in the browser, or both. Open source.',
+  jsonLd,
+} = Astro.props;
+
+const canonical = new URL(Astro.url.pathname, Astro.site).toString();
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <link rel="canonical" href={canonical} />
+
+    <title>{title}</title>
+    <meta name="description" content={description} />
+
+    <meta name="keywords" content="JavaScript scratchpad, TypeScript playground, RunJS alternative, inline values, ESM imports, npm browser, Rust V8, Tauri" />
+    <meta name="author" content="codellyson" />
+    <meta name="category" content="developer-tools" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="justrunjs" />
+
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f9fafb" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#16140f" />
+
+    <!--
+      No-flash theme boot. Reads the user's saved theme id + mode (or
+      falls back to defaults + prefers-color-scheme), then writes the
+      variant's RGB triplets onto <html> as CSS custom properties BEFORE
+      first paint. Tailwind utilities (`bg-bg`, `text-primary`, ...)
+      pick them up automatically.
+    -->
+    <script is:inline define:vars={{ themeData, defaultThemeId: DEFAULT_THEME_ID }}>
+      // Expose the catalog so the picker (which loads after first paint) can
+      // switch themes without re-parsing or refetching anything.
+      window.__RUNJS_THEMES__ = themeData;
+      (function () {
+        var VAR_MAP = {
+          bg: "--bg",
+          bgSecondary: "--bg-secondary",
+          border: "--border",
+          textPrimary: "--text-primary",
+          textSecondary: "--text-secondary",
+          textMuted: "--text-muted",
+          accent: "--accent",
+          accentHover: "--accent-hover",
+          accentText: "--accent-text",
+          danger: "--danger",
+          success: "--success",
+          warning: "--warning",
+        };
+        try {
+          var themeId = localStorage.getItem("runjs.theme.id") || defaultThemeId;
+          var mode = localStorage.getItem("runjs.theme.mode");
+          if (!mode) {
+            mode =
+              window.matchMedia &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light";
+          }
+          var theme = themeData[themeId] || themeData[defaultThemeId];
+          var variant = mode === "dark" ? theme.dark : theme.light;
+          var root = document.documentElement;
+          for (var k in VAR_MAP) {
+            if (variant[k]) root.style.setProperty(VAR_MAP[k], variant[k]);
+          }
+          if (mode === "dark") root.classList.add("dark");
+          // Stash on the root so the picker can read current state without
+          // re-parsing localStorage.
+          root.dataset.themeId = themeId;
+          root.dataset.themeMode = mode;
+        } catch (_) {}
+      })();
+    </script>
+
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%A1%3C/text%3E%3C/svg%3E"
+    />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:site_name" content="justrunjs" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+
+    {jsonLd && (
+      <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} is:inline />
+    )}
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

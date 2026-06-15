@@ -1,0 +1,212 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Button from '../components/Button.astro';
+import ThemeToggle from '../components/ThemeToggle.astro';
+import EditorEmbed from '../components/EditorEmbed.astro';
+
+// In-browser scratchpad lives at /app (built later — link works today,
+// page is added in the web/ workspace).
+const launchUrl = '/web/index.html';
+const downloadUrl = 'https://github.com/codellyson/runjs-rs/releases';
+const repoUrl = 'https://github.com/codellyson/runjs-rs';
+
+const FAQ = [
+  {
+    q: 'What is this, exactly?',
+    a: 'A scratchpad. You write TypeScript or JavaScript at the top, and every top-level expression renders its value on the same line. Like a REPL, but you can edit history.',
+  },
+  {
+    q: 'TypeScript without a tsconfig?',
+    a: 'Yes. Types are stripped via SWC before the code runs in V8. There is no project, no tsconfig, no install step. Per-tab TS/JS switching.',
+  },
+  {
+    q: 'Can I import packages?',
+    a: 'Use the npm: prefix — e.g. import _ from "npm:lodash@4". Packages are fetched as ESM from esm.sh and cached for the session.',
+  },
+  {
+    q: 'Does it work offline?',
+    a: 'The native desktop build runs entirely on your machine; the V8 isolate is bundled. npm: and https: imports need a network. The browser build needs a network for the page itself.',
+  },
+  {
+    q: 'Is it free?',
+    a: 'Yes. Open source on GitHub.',
+  },
+];
+
+// A small, static taste of what the editor does. Source on the left, value on
+// the right, same line. Mono throughout. The real editor lives at /app.
+const demo: Array<{ code: string; value?: string }> = [
+  { code: 'const greeting = "hello";', value: "'hello'" },
+  { code: 'greeting.toUpperCase();', value: "'HELLO'" },
+  { code: '' },
+  { code: 'const m = new Map<string, { name: string }>();' },
+  { code: 'm.set("u1", { name: "Ada" });', value: "Map(1) { 'u1' => { name: 'Ada' } }" },
+  { code: 'm;', value: "Map(1) { 'u1' => { name: 'Ada' } }" },
+  { code: '' },
+  { code: 'import _ from "npm:lodash@4";' },
+  { code: '_.chunk([1, 2, 3, 4, 5], 2);', value: '[ [ 1, 2 ], [ 3, 4 ], [ 5 ] ]' },
+  { code: '' },
+  { code: 'const total = await Promise.resolve(40 + 2);', value: '42' },
+  { code: 'total;', value: '42' },
+];
+
+const softwareJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'justrunjs',
+  description:
+    'A JavaScript scratchpad with inline values. Write TypeScript or JavaScript and see every top-level expression render its value on the same line. Native desktop, in the browser, or both.',
+  applicationCategory: 'DeveloperApplication',
+  operatingSystem: 'macOS, Windows, Linux, Web',
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+  url: Astro.site?.toString() ?? 'https://runjs-rs.pages.dev',
+  downloadUrl,
+};
+
+const faqJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: FAQ.map(({ q, a }) => ({
+    '@type': 'Question',
+    name: q,
+    acceptedAnswer: { '@type': 'Answer', text: a },
+  })),
+};
+---
+
+<Layout jsonLd={[softwareJsonLd, faqJsonLd]}>
+  <ThemeToggle />
+  <div class="min-h-screen bg-bg">
+    <main class="container mx-auto px-6 sm:px-8 py-16 sm:py-24">
+      <div class="max-w-2xl mx-auto">
+
+        <header class="mb-16">
+          <p class="font-mono text-xs text-muted mb-4">v0.1 · open source · Rust + V8</p>
+          <h1 class="text-5xl sm:text-6xl font-semibold tracking-tight text-primary mb-4">
+            justrunjs
+          </h1>
+          <p class="text-xl sm:text-2xl text-primary font-medium mb-6">
+            A scratchpad with inline values.
+          </p>
+          <p class="text-base text-secondary leading-relaxed max-w-xl">
+            Write TypeScript or JavaScript. Every top-level expression renders
+            its value next to the source line, the moment you stop typing.
+            Native desktop, in the browser, or both.
+          </p>
+
+          <div class="flex flex-wrap items-center gap-3 mt-8">
+            <Button variant="primary" href="#playground" data-action="open-editor">
+              Open in browser
+            </Button>
+            <Button variant="secondary" href={downloadUrl} external>
+              Download for desktop
+            </Button>
+          </div>
+        </header>
+
+      </div>
+
+      <!-- Embedded editor — escapes the max-w-2xl wrapper so it can stretch
+           to its own 1200px width. `?embed=1` flag hides /web/'s home button
+           and surfaces the expand-to-fullscreen toggle. -->
+      <EditorEmbed />
+
+      <div class="max-w-2xl mx-auto">
+
+        <!-- Inline-values demo -->
+        <section aria-labelledby="demo" class="hidden">
+          <h2 id="demo" class="sr-only">What it looks like</h2>
+          <div class="rounded-md border border-border bg-bg-secondary overflow-hidden">
+            <div class="flex items-center justify-between px-4 py-2 border-b border-border">
+              <span class="font-mono text-xs text-muted">untitled.ts</span>
+              <span class="font-mono text-xs text-muted">6 results · 18ms</span>
+            </div>
+            <div class="grid grid-cols-[1fr_auto] font-mono text-xs leading-6">
+              {demo.map((row) => (
+                <>
+                  <div class="px-4 py-0.5 text-primary whitespace-pre">
+                    {row.code || ' '}
+                  </div>
+                  <div class="px-4 py-0.5 text-muted whitespace-pre text-right">
+                    {row.value ?? ''}
+                  </div>
+                </>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section aria-labelledby="how-it-works" class="mb-16">
+          <h2 id="how-it-works" class="text-xl font-semibold text-primary mb-6">
+            How it works
+          </h2>
+          <ol class="space-y-4 text-secondary">
+            <li class="flex gap-4">
+              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-accent/10 text-accent text-xs font-semibold flex items-center justify-center">
+                1
+              </span>
+              <p>
+                <strong class="text-primary">Type.</strong>
+                TypeScript or JavaScript. Per-tab language switching, no
+                tsconfig.
+              </p>
+            </li>
+            <li class="flex gap-4">
+              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-accent/10 text-accent text-xs font-semibold flex items-center justify-center">
+                2
+              </span>
+              <p>
+                <strong class="text-primary">See values inline.</strong>
+                Every top-level expression renders next to its source line.
+                Maps, Sets, Symbols, class instances — formatted, not
+                JSON-stringified.
+              </p>
+            </li>
+            <li class="flex gap-4">
+              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-accent/10 text-accent text-xs font-semibold flex items-center justify-center">
+                3
+              </span>
+              <p>
+                <strong class="text-primary">Reach for packages.</strong>
+                <code class="font-mono text-xs text-primary px-1 py-0.5 rounded bg-bg-secondary">npm:lodash@4</code>
+                and <code class="font-mono text-xs text-primary px-1 py-0.5 rounded bg-bg-secondary">https://</code>
+                imports just work. Top-level await is supported.
+              </p>
+            </li>
+          </ol>
+        </section>
+
+        <section aria-labelledby="faq" class="mb-16">
+          <h2 id="faq" class="text-xl font-semibold text-primary mb-6">
+            Frequently asked questions
+          </h2>
+          <dl class="space-y-6">
+            {FAQ.map(({ q, a }) => (
+              <div>
+                <dt class="text-base font-medium text-primary mb-1.5">{q}</dt>
+                <dd class="text-sm text-secondary leading-relaxed">{a}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+
+        <footer class="pt-8 border-t border-border">
+          <p class="text-xs text-muted/70 flex flex-wrap items-center gap-3">
+            <a href={repoUrl} class="hover:text-primary transition-colors" target="_blank" rel="noopener noreferrer">
+              GitHub
+            </a>
+            <span class="opacity-50">·</span>
+            <a href={downloadUrl} class="hover:text-primary transition-colors" target="_blank" rel="noopener noreferrer">
+              Releases
+            </a>
+            <span class="opacity-50">·</span>
+            <a href={`${repoUrl}/blob/master/DESIGN.md`} class="hover:text-primary transition-colors" target="_blank" rel="noopener noreferrer">
+              Design notes
+            </a>
+          </p>
+        </footer>
+
+      </div>
+    </main>
+  </div>
+</Layout>

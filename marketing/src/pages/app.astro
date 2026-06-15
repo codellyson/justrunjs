@@ -1,0 +1,25 @@
+---
+// /app -> /web/index.htmlindex.html. The editor itself is a fully client-rendered
+// static page synced from ../web/index.html at build time (see scripts/sync-web.mjs).
+// Astro static export handles meta-refresh redirects fine and the swap is
+// indistinguishable from a direct hit.
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>justrunjs — opening editor…</title>
+    <meta http-equiv="refresh" content="0; url=/web/index.html" />
+    <link rel="canonical" href="/web/index.html" />
+    <meta name="robots" content="noindex" />
+  </head>
+  <body>
+    <script>window.location.replace("/web/index.html");</script>
+    <noscript>
+      <p style="font-family: sans-serif; padding: 24px;">
+        Opening the editor… <a href="/web/index.html">tap here if you aren't redirected</a>.
+      </p>
+    </noscript>
+  </body>
+</html>

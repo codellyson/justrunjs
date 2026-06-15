@@ -1,0 +1,121 @@
+---
+// In-browser editor — bundled through Astro/Vite (NPM imports for CodeMirror,
+// @lezer/highlight, @babel/standalone) so module dedup is guaranteed. The
+// editor markup is rendered server-side; the runtime mounts in a `client:load`
+// script tag below.
+import "../../web/style.css";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>justrunjs — in your browser</title>
+    <style>
+      /* Inline so it always renders, even if style.css 404s. */
+      #boot-error {
+        position: fixed; inset: 0; padding: 24px 32px;
+        background: #1a0f0e; color: #f8b3ad;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px; line-height: 1.5; white-space: pre-wrap;
+        z-index: 9999; overflow: auto;
+      }
+      #boot-error h2 { margin: 0 0 8px; font-size: 14px; color: #ffd1cc; }
+    </style>
+    <script is:inline>
+      (function () {
+        function show(label, detail) {
+          var existing = document.getElementById("boot-error");
+          var pre = existing || document.createElement("div");
+          pre.id = "boot-error";
+          pre.innerHTML =
+            '<h2>' + label + '</h2>' +
+            (detail || "").toString().replace(/[<>&]/g, function (c) {
+              return { "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c];
+            });
+          if (!existing && document.body) document.body.appendChild(pre);
+        }
+        window.addEventListener("error", function (e) {
+          var d = e.error && e.error.stack ? e.error.stack : (e.message || String(e));
+          if (e.filename) d = e.filename + ":" + e.lineno + "\n\n" + d;
+          show("Boot error", d);
+        });
+        window.addEventListener("unhandledrejection", function (e) {
+          var r = e.reason;
+          show("Unhandled rejection", (r && r.stack) || (r && r.message) || String(r));
+        });
+      })();
+    </script>
+  </head>
+  <body>
+    <aside id="sidebar" aria-label="actions">
+      <button class="icon-btn" id="btn-run" title="Run (⌘↵)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M7 4.5v15l13-7.5z" />
+        </svg>
+      </button>
+      <button class="icon-btn" id="btn-stop" title="Stop">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <rect x="5" y="5" width="14" height="14" rx="1.5" />
+        </svg>
+      </button>
+      <div class="sidebar-spacer"></div>
+      <div class="sidebar-status" id="sidebar-status" title="ready">
+        <span class="status-dot" aria-hidden="true"></span>
+      </div>
+      <button class="icon-btn" id="btn-settings" title="Settings">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.14 12.94a7.957 7.957 0 0 0 0-1.88l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a8.07 8.07 0 0 0-1.62-.94l-.36-2.54A.5.5 0 0 0 13.91 2h-3.82a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.55-1.62.94l-2.39-.96a.5.5 0 0 0-.61.22L2.7 8.48a.5.5 0 0 0 .12.64l2.03 1.58a7.957 7.957 0 0 0 0 1.88L2.82 14.16a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .61.22l2.39-.96c.49.39 1.03.7 1.62.94l.36 2.54a.5.5 0 0 0 .5.42h3.82a.5.5 0 0 0 .5-.42l.36-2.54c.59-.24 1.13-.55 1.62-.94l2.39.96a.5.5 0 0 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58z" />
+        </svg>
+      </button>
+      <a class="icon-btn" id="btn-home" href="/" title="Back to overview">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 12l9-9 9 9" />
+          <path d="M5 10v10h14V10" />
+        </svg>
+      </a>
+    </aside>
+    <main>
+      <div id="editor">
+        <div id="tabs" role="tablist"></div>
+        <div id="editor-host"></div>
+      </div>
+      <div id="splitter" aria-hidden="true"></div>
+      <div id="results">
+        <button id="btn-expand" class="hidden" title="Toggle full screen" aria-label="Toggle full screen">
+          <svg class="icon-expand" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="15 3 21 3 21 9" />
+            <polyline points="9 21 3 21 3 15" />
+            <line x1="21" y1="3" x2="14" y2="10" />
+            <line x1="3" y1="21" x2="10" y2="14" />
+          </svg>
+          <svg class="icon-collapse" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="4 14 10 14 10 20" />
+            <polyline points="20 10 14 10 14 4" />
+            <line x1="14" y1="10" x2="21" y2="3" />
+            <line x1="3" y1="21" x2="10" y2="14" />
+          </svg>
+        </button>
+      </div>
+    </main>
+
+    <div id="settings-popover" class="settings-popover hidden" role="dialog" aria-label="Settings">
+      <div class="settings-title">Editor</div>
+      <label class="settings-row">
+        <span>Show line numbers</span>
+        <input type="checkbox" id="opt-line-numbers" />
+      </label>
+    </div>
+
+    <script>
+      // Theme tokens applied to <html> before stylesheets resolve. Imported
+      // here so Astro/Vite bundles it; runs on the main thread synchronously
+      // when the module loads.
+      import "../../web/theme-boot.js";
+      // Editor runtime. CodeMirror + worker bridge.
+      import "../../web/main.js";
+    </script>
+  </body>
+</html>
