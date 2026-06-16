@@ -48,15 +48,12 @@ jobs:
         with:
           node-version-file: marketing/.nvmrc
           cache: pnpm
-          cache-dependency-path: marketing/pnpm-lock.yaml
 
       - name: Install deps
-        working-directory: marketing
         run: pnpm install --frozen-lockfile
 
       - name: Build Astro
-        working-directory: marketing
-        run: pnpm build
+        run: pnpm --filter runjs-rs-marketing build
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
