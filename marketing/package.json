@@ -10,7 +10,7 @@
     "assets": "node scripts/generate-assets.mjs"
   },
   "dependencies": {
-    "@kreativekorna/justui": "link:../../justui",
+    "@kreativekorna/justui": "^0.1.0",
     "astro": "^5.0.0",
     "@astrojs/tailwind": "^5.1.4",
     "@fontsource-variable/geist": "^5.1.0",
