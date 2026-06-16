@@ -56,7 +56,7 @@ jobs:
         run: pnpm --filter runjs-rs-marketing build
 
       - name: Install wrangler globally
-        run: npm install -g wrangler@latest
+        run: npm install -g wrangler@3
 
       - name: Deploy to Cloudflare Pages
         working-directory: marketing
