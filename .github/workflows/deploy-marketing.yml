@@ -1,0 +1,70 @@
+# Deploys the marketing site + browser editor to Cloudflare Pages.
+#
+# - Pushes to `master` -> production deploy (justrunjs.pages.dev + custom domain)
+# - Pushes to any other branch / PRs -> preview deploy on a unique URL
+#
+# Required repo secrets (Settings -> Secrets and variables -> Actions):
+#   CLOUDFLARE_API_TOKEN  — token with `Cloudflare Pages: Edit` permission
+#                           (create at https://dash.cloudflare.com/profile/api-tokens)
+#   CLOUDFLARE_ACCOUNT_ID — your CF account ID
+#                           (https://dash.cloudflare.com -> right sidebar)
+#
+# The CF Pages project itself ("justrunjs") needs to exist before the first
+# run. Either create it once via the Pages dashboard ("Direct upload" mode,
+# no Git connection — this workflow does the deploying), or `wrangler pages
+# project create justrunjs` locally. After that, this action handles every
+# subsequent deploy.
+
+name: deploy-marketing
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "marketing/**"
+      - ".github/workflows/deploy-marketing.yml"
+  pull_request:
+    paths:
+      - "marketing/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: write  # CF pages-action writes deployment status to commits
+  pull-requests: write  # leave a preview-URL comment on PRs
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Build + deploy
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: marketing/.nvmrc
+          cache: pnpm
+          cache-dependency-path: marketing/pnpm-lock.yaml
+
+      - name: Install deps
+        working-directory: marketing
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Astro
+        working-directory: marketing
+        run: pnpm build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # `wrangler pages deploy` reads `pages_build_output_dir` from
+          # marketing/wrangler.toml (which is `./dist`).
+          workingDirectory: marketing
+          command: pages deploy dist --project-name=justrunjs --branch=${{ github.head_ref || github.ref_name }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}

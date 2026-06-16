@@ -1,0 +1,28 @@
+# Cloudflare Pages header rules — applied at the edge.
+#
+# /_astro/* — fingerprinted by Vite (filename includes a content hash), so
+# they're safe to cache forever. Saves repeat fetches on subsequent visits
+# and on every editor page load (the worker + CodeMirror chunks live here).
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Web fonts and other public/ images are stable across deploys until we
+# regen via `pnpm assets`, so cache aggressively too.
+/*.woff2
+  Cache-Control: public, max-age=31536000, immutable
+
+/og-image.png
+  Cache-Control: public, max-age=86400
+
+/favicon-*.png
+  Cache-Control: public, max-age=86400
+
+# HTML must revalidate every load — otherwise users keep seeing the old
+# version after a deploy.
+/*.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+# Editor worker — explicit MIME so older proxies don't trip on it (Vite
+# emits these as application/javascript already; this is belt-and-suspenders).
+/_astro/worker-*.js
+  Content-Type: text/javascript; charset=utf-8

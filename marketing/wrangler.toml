@@ -1,0 +1,9 @@
+# Cloudflare Pages project config.
+#
+# Read by `wrangler pages deploy` (CLI deploys) and by Cloudflare's Git
+# integration when present. The dashboard settings still apply for things
+# wrangler.toml doesn't cover (env vars, custom domain, branch protections).
+
+name = "justrunjs"
+pages_build_output_dir = "./dist"
+compatibility_date = "2026-01-01"
