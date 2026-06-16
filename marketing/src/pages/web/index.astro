@@ -18,6 +18,10 @@ import { BUILT_IN_THEMES } from "../../lib/theme-plugins";
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>justrunjs — in your browser</title>
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <style>
       /* Inline so it always renders, even if style.css 404s. */
       #boot-error {
@@ -55,6 +59,41 @@ import { BUILT_IN_THEMES } from "../../lib/theme-plugins";
     </script>
   </head>
   <body>
+    <!--
+      Custom Tauri title bar. Hidden by default; main.js removes the hidden
+      class when window.__TAURI__ is detected. On macOS (titleBarStyle:
+      Overlay) the OS still paints traffic lights at the top-left, so we
+      reserve 80px of safe-area there and skip drawing min/max/close — the
+      OS provides them. On Windows/Linux (decorations:false) we draw the
+      controls ourselves. The whole bar is `data-tauri-drag-region` so
+      clicking and dragging it moves the window.
+    -->
+    <div id="titlebar" class="titlebar hidden" data-tauri-drag-region>
+      <div class="titlebar-name" data-tauri-drag-region>justrunjs</div>
+      <div class="titlebar-controls" id="titlebar-controls">
+        <button class="titlebar-btn" id="btn-tb-min" title="Minimize" aria-label="Minimize">
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+            <line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1" />
+          </svg>
+        </button>
+        <button class="titlebar-btn" id="btn-tb-max" title="Maximize" aria-label="Maximize">
+          <svg class="icon-max" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+            <rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1" />
+          </svg>
+          <svg class="icon-restore" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+            <rect x="0.5" y="2.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1" />
+            <path d="M2.5,2.5 L2.5,0.5 L9.5,0.5 L9.5,7.5 L7.5,7.5" fill="none" stroke="currentColor" stroke-width="1" />
+          </svg>
+        </button>
+        <button class="titlebar-btn titlebar-btn-danger" id="btn-tb-close" title="Close" aria-label="Close">
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+            <line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1" />
+            <line x1="0" y1="10" x2="10" y2="0" stroke="currentColor" stroke-width="1" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
     <aside id="sidebar" aria-label="actions">
       <button class="icon-btn" id="btn-run" title="Run (⌘↵)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">

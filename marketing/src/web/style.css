@@ -98,6 +98,86 @@ body {
   overflow: hidden;
 }
 
+/* When the custom Tauri title bar is visible, reserve 32px at the top so
+ * sidebar + main start below it. The hidden class on .titlebar gates this
+ * — browser sessions don't get the title bar OR the padding. */
+body.has-titlebar {
+  grid-template-rows: 32px 1fr;
+  grid-template-columns: 48px 1fr;
+}
+body.has-titlebar #titlebar {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+body.has-titlebar #sidebar {
+  grid-column: 1;
+  grid-row: 2;
+}
+body.has-titlebar main {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+/* ---------- custom title bar (Tauri only) ---------- */
+
+.titlebar {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  background: rgb(var(--bg-secondary));
+  border-bottom: 1px solid rgb(var(--border));
+  user-select: none;
+  -webkit-user-select: none;
+  height: 32px;
+}
+.titlebar.hidden { display: none; }
+
+.titlebar-name {
+  display: flex;
+  align-items: center;
+  /* px-3 in justdb's tailwind = 12px, not 14. Same gap-2 inner spacing
+   * (handled by flex gap if we ever add a logo glyph in front). */
+  gap: 8px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgb(var(--text-secondary));
+  letter-spacing: 0.2px;
+  pointer-events: none;
+}
+
+.titlebar-controls { display: flex; }
+
+.titlebar-btn {
+  width: 44px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  color: rgb(var(--text-secondary));
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.titlebar-btn:hover {
+  /* justdb: hover:bg-accent/10 hover:text-primary */
+  background: rgb(var(--accent) / 0.1);
+  color: rgb(var(--text-primary));
+}
+.titlebar-btn-danger:hover {
+  /* justdb: hover:bg-danger hover:text-white */
+  background: rgb(var(--danger));
+  color: #fff;
+}
+
+/* Maximize button swaps between the "maximize" square and the "restore"
+ * stacked-squares icon. main.js toggles .is-maximized on .titlebar when
+ * the window's state changes. */
+#btn-tb-max .icon-restore { display: none; }
+.titlebar.is-maximized #btn-tb-max .icon-max { display: none; }
+.titlebar.is-maximized #btn-tb-max .icon-restore { display: block; }
+
 /* ---------- sidebar ---------- */
 
 #sidebar {
@@ -334,7 +414,18 @@ main {
   overflow-y: hidden;
   white-space: nowrap;
   user-select: none;
+  /* Suppress the visible scrollbar — the universal `*::-webkit-scrollbar`
+   * rule paints an 8px-tall gutter inside the 32px tab bar, which pushes
+   * tab text up and crams the layout. Tabs still scroll on wheel/swipe. */
+  scrollbar-width: none;
 }
+#tabs::-webkit-scrollbar { display: none; }
+
+/* macOS Tauri: the system traffic lights occupy the top-left ~80px (under
+ * titleBarStyle: Overlay + decorations: true). main.js makes the tab bar
+ * a drag region and adds this class so the first tab doesn't sit under
+ * the traffic lights. The browser version doesn't get this padding. */
+body.titlebar-mac #tabs { padding-left: 80px; }
 
 .tab {
   display: flex;

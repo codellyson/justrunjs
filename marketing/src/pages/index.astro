@@ -75,6 +75,17 @@ const faqJsonLd = {
 ---
 
 <Layout jsonLd={[softwareJsonLd, faqJsonLd]}>
+  <!--
+    If the marketing landing somehow loads inside the Tauri desktop window
+    (e.g. tauri.conf.json's `url` field didn't navigate where we expected),
+    immediately redirect to the editor route. Browsers never see this firing
+    because window.__TAURI__ is only present in the Tauri webview.
+  -->
+  <script is:inline>
+    if (typeof window !== "undefined" && window.__TAURI__) {
+      window.location.replace("/web/index.html");
+    }
+  </script>
   <ThemeToggle />
   <div class="min-h-screen bg-bg">
     <main class="container mx-auto px-6 sm:px-8 py-16 sm:py-24">

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!--
+    justrunjs logo — a console prompt mark.
+    Greater-than chevron in cream + a blinking-cursor underscore in the
+    theme's lavender accent. Reads as "interactive eval" at any size and
+    keeps the warm dark espresso background that the editor itself uses.
+  -->
+  <defs>
+    <linearGradient id="bg" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0" stop-color="#1d1a17"/>
+      <stop offset="1" stop-color="#14120f"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#bg)"/>
+
+  <!-- > chevron -->
+  <path
+    d="M 320 340 L 580 512 L 320 684"
+    stroke="#e8ded2"
+    stroke-width="100"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"/>
+
+  <!-- _ cursor (blinking underscore) -->
+  <rect x="620" y="640" width="240" height="48" rx="24" fill="#a8b4dc"/>
+</svg>

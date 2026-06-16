@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <!--
+    Open Graph share image — wordmark + tagline on the editor's warm dark
+    palette, with a small logo mark top-left for brand recognition. Rendered
+    at 1200x630 (the standard Twitter / Facebook unfurl size).
+  -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d1a17"/>
+      <stop offset="1" stop-color="#0f0d0b"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- Small logo mark, top-left -->
+  <g transform="translate(80, 80)">
+    <rect width="100" height="100" rx="22" fill="#26221e"/>
+    <path d="M 30 32 L 58 50 L 30 68" stroke="#e8ded2" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <rect x="64" y="62" width="26" height="6" rx="3" fill="#a8b4dc"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="600" y="340"
+        text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, 'Geist', 'Inter', 'Segoe UI', sans-serif"
+        font-weight="700"
+        font-size="120"
+        fill="#e8ded2"
+        letter-spacing="-3">justrunjs</text>
+
+  <!-- Tagline -->
+  <text x="600" y="410"
+        text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, 'Geist', 'Inter', 'Segoe UI', sans-serif"
+        font-weight="500"
+        font-size="36"
+        fill="#a8b4dc"
+        letter-spacing="-0.5">A scratchpad with inline values.</text>
+
+  <!-- Footer marker -->
+  <text x="600" y="540"
+        text-anchor="middle"
+        font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+        font-size="20"
+        fill="#7c7266"
+        letter-spacing="2">v0.1 · open source · Rust + V8</text>
+</svg>

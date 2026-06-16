@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "preview": "astro preview"
+    "preview": "astro preview",
+    "assets": "node scripts/generate-assets.mjs"
   },
   "dependencies": {
     "astro": "^5.0.0",
@@ -28,6 +29,7 @@
     "@codemirror/lint": "^6.8.4",
     "typescript": "^5.7.2",
     "@typescript/vfs": "^1.6.0",
-    "@valtown/codemirror-ts": "^2.3.1"
+    "@valtown/codemirror-ts": "^2.3.1",
+    "sharp": "^0.34.0"
   }
 }

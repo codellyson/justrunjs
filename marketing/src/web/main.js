@@ -609,6 +609,63 @@ if (isEmbedded || tauriCore) {
   if (home) home.style.display = "none";
 }
 
+// --- custom title bar (Tauri only) --------------------------------------
+// Ported from justdb/apps/web/src/components/tauri-title-bar.tsx.
+// On macOS, tauri.macos.conf.json flips decorations back on with
+// titleBarStyle: Overlay + hiddenTitle: true — the OS draws the traffic
+// lights, content extends behind them. We skip our custom bar there and
+// just reserve 80px on the tab bar's left for the traffic-light zone, plus
+// make it a drag region. On Windows/Linux (base config decorations: false)
+// we render the full custom bar with min/max/close.
+const isMac =
+  tauriCore && typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent);
+
+if (tauriCore && isMac) {
+  const tabsEl = document.getElementById("tabs");
+  if (tabsEl) {
+    tabsEl.setAttribute("data-tauri-drag-region", "");
+    document.body.classList.add("titlebar-mac");
+  }
+}
+
+if (tauriCore && !isMac) {
+  const titlebar = document.getElementById("titlebar");
+  if (titlebar) {
+    titlebar.classList.remove("hidden");
+    document.body.classList.add("has-titlebar");
+
+    const win = window.__TAURI__ && window.__TAURI__.window;
+    function withWindow(method) {
+      if (!win || !win.getCurrentWindow) return;
+      try {
+        const w = win.getCurrentWindow();
+        const fn = w[method];
+        if (typeof fn === "function") fn.call(w);
+      } catch (_) {}
+    }
+    const minBtn = document.getElementById("btn-tb-min");
+    const maxBtn = document.getElementById("btn-tb-max");
+    const closeBtn = document.getElementById("btn-tb-close");
+    if (minBtn) minBtn.addEventListener("click", () => withWindow("minimize"));
+    if (maxBtn) maxBtn.addEventListener("click", () => withWindow("toggleMaximize"));
+    if (closeBtn) closeBtn.addEventListener("click", () => withWindow("close"));
+
+    // Track maximized state so the icon swap matches reality.
+    (async () => {
+      if (!win || !win.getCurrentWindow) return;
+      try {
+        const w = win.getCurrentWindow();
+        const refresh = async () => {
+          const m = await w.isMaximized();
+          titlebar.classList.toggle("is-maximized", m);
+        };
+        await refresh();
+        await w.onResized(refresh);
+      } catch (_) {}
+    })();
+  }
+}
+
 if (isEmbedded) {
   const expand = document.getElementById("btn-expand");
   if (expand) {
