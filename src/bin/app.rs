@@ -31,6 +31,11 @@ fn main() {
     let _ = worker();
 
     tauri::Builder::default()
+        // Auto-update support: the plugin polls the `endpoints` listed in
+        // tauri.conf.json, downloads the new bundle if it's signed with the
+        // matching minisign pubkey, and prompts the user to restart. See
+        // DEPLOYMENT.md for how to issue + sign a release.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![evaluate_source, stop_eval])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

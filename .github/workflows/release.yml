@@ -1,0 +1,113 @@
+# Cross-platform Tauri release build.
+#
+# Triggers on a tag push matching v*.*.* (e.g. `git tag v0.1.0 && git push --tags`).
+# Builds the Astro frontend on each runner, then `cargo tauri build` for the
+# host platform, signs the bundle with the minisign key in repo secrets, and
+# uploads the result to a GitHub Release (with the auto-generated latest.json
+# the in-app updater polls).
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   TAURI_SIGNING_PRIVATE_KEY            — content of ~/.tauri/justrunjs.key
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD   — the passphrase you set when generating it
+# See DEPLOYMENT.md for the full setup.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write  # tauri-action creates the release + uploads assets
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: "--target aarch64-apple-darwin"
+            label: macos-arm64
+          - platform: macos-latest
+            args: "--target x86_64-apple-darwin"
+            label: macos-x64
+          - platform: ubuntu-22.04
+            args: ""
+            label: linux-x64
+          - platform: windows-latest
+            args: ""
+            label: windows-x64
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # Add the macOS arch target if this job is building for it.
+          targets: ${{ matrix.platform == 'macos-latest' && (contains(matrix.args, 'aarch64') && 'aarch64-apple-darwin' || 'x86_64-apple-darwin') || '' }}
+
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Per-runner cache key — Cargo.lock for the package set,
+          # matrix.label so macos-arm64 and macos-x64 don't share a cache.
+          key: ${{ matrix.label }}
+
+      - name: Install Linux build deps
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+
+      - name: Install marketing JS deps
+        working-directory: marketing
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend (Astro)
+        working-directory: marketing
+        run: pnpm build
+
+      - name: Build Tauri bundle + upload to release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          # tauri-action will: create a draft release on the first runner
+          # (idempotently — subsequent runners attach to the same release),
+          # build the bundle, sign updater artifacts, upload everything.
+          tagName: ${{ github.ref_name }}
+          releaseName: "justrunjs ${{ github.ref_name }}"
+          releaseBody: |
+            See the [changelog](https://github.com/codellyson/justrunjs/blob/master/CHANGELOG.md) for details.
+
+            Downloads:
+            - **macOS (Apple Silicon)**: `justrunjs_*_aarch64.dmg`
+            - **macOS (Intel)**: `justrunjs_*_x64.dmg`
+            - **Windows**: `justrunjs_*_x64_en-US.msi`
+            - **Linux**: `justrunjs_*_amd64.deb` or `justrunjs_*_amd64.AppImage`
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

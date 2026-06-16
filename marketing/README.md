@@ -20,7 +20,7 @@ pnpm preview      # preview the built site
 
 ## Deploy to Cloudflare Pages
 
-1. Push the repo to GitHub (already done — codellyson/runjs-rs).
+1. Push the repo to GitHub (already done — codellyson/justrunjs).
 2. In the Cloudflare dashboard, **Pages → Create project → Connect to Git**.
 3. Pick the `runjs-rs` repo. Build settings:
    - **Framework preset:** Astro
