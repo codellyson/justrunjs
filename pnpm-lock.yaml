@@ -16,6 +16,9 @@ importers:
       '@babel/standalone':
         specifier: ^7.26.4
         version: 7.29.7
+      '@codellyson/justui':
+        specifier: ^0.1.0
+        version: 0.1.0(astro@5.18.2(jiti@1.21.7)(rollup@4.62.0)(typescript@5.9.3)(yaml@2.9.0))(tailwindcss@3.4.19(yaml@2.9.0))
       '@codemirror/autocomplete':
         specifier: ^6.20.1
         version: 6.20.3
@@ -46,9 +49,6 @@ importers:
       '@fontsource-variable/geist-mono':
         specifier: ^5.1.0
         version: 5.2.8
-      '@kreativekorna/justui':
-        specifier: ^0.1.0
-        version: 0.1.0(astro@5.18.2(jiti@1.21.7)(rollup@4.62.0)(typescript@5.9.3)(yaml@2.9.0))(tailwindcss@3.4.19(yaml@2.9.0))
       '@lezer/highlight':
         specifier: ^1.2.3
         version: 1.2.3
@@ -130,6 +130,17 @@ packages:
   '@capsizecss/unpack@4.0.1':
     resolution: {integrity: sha512-CuNiSqg7+e1cO/GjffyMOm5Tt2jUF9CWHHnvQ/UkqvtkGfHdgwEC0wpmq7fkN3gxwpRnrAN0WzO3vREKmNolMQ==}
     engines: {node: '>=18'}
+
+  '@codellyson/justui@0.1.0':
+    resolution: {integrity: sha512-wAR/rvBbU9i8Bjjq9H84Vop7qbQ1oy8Vw5bG0E97wQFti+RJ9+xogIkKXRGfvLElU5jufYBZld1jbD1dkegZPw==}
+    peerDependencies:
+      astro: ^5.0.0
+      tailwindcss: ^3.4.0 || ^4.0.0
+    peerDependenciesMeta:
+      astro:
+        optional: true
+      tailwindcss:
+        optional: true
 
   '@codemirror/autocomplete@6.20.3':
     resolution: {integrity: sha512-tlosUqb+3BbxCxZdu4tKeRghPFC+QM7q4X5YhKV2eCmPG+1r2F3f4AaSz5sCrFqUtX4Jh20VFTKecl16MgiV9g==}
@@ -625,17 +636,6 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
-
-  '@kreativekorna/justui@0.1.0':
-    resolution: {integrity: sha512-YO+IOU44N367wOQsyGvDdXBRArc0eF7dMzdDqAxOv8hTVlhO/hMza3csWAzQ3oQ/mm9mWbbxrMcSgEbYKe9xlA==}
-    peerDependencies:
-      astro: ^5.0.0
-      tailwindcss: ^3.4.0 || ^4.0.0
-    peerDependenciesMeta:
-      astro:
-        optional: true
-      tailwindcss:
-        optional: true
 
   '@lezer/common@1.5.2':
     resolution: {integrity: sha512-sxQE460fPZyU3sdc8lafxiPwJHBzZRy/udNFynGQky1SePYBdhkBl1kOagA9uT3pxR8K09bOrmTUqA9wb/PjSQ==}
@@ -2183,6 +2183,11 @@ snapshots:
     dependencies:
       fontkitten: 1.0.3
 
+  '@codellyson/justui@0.1.0(astro@5.18.2(jiti@1.21.7)(rollup@4.62.0)(typescript@5.9.3)(yaml@2.9.0))(tailwindcss@3.4.19(yaml@2.9.0))':
+    optionalDependencies:
+      astro: 5.18.2(jiti@1.21.7)(rollup@4.62.0)(typescript@5.9.3)(yaml@2.9.0)
+      tailwindcss: 3.4.19(yaml@2.9.0)
+
   '@codemirror/autocomplete@6.20.3':
     dependencies:
       '@codemirror/language': 6.12.3
@@ -2513,11 +2518,6 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
-
-  '@kreativekorna/justui@0.1.0(astro@5.18.2(jiti@1.21.7)(rollup@4.62.0)(typescript@5.9.3)(yaml@2.9.0))(tailwindcss@3.4.19(yaml@2.9.0))':
-    optionalDependencies:
-      astro: 5.18.2(jiti@1.21.7)(rollup@4.62.0)(typescript@5.9.3)(yaml@2.9.0)
-      tailwindcss: 3.4.19(yaml@2.9.0)
 
   '@lezer/common@1.5.2': {}
 

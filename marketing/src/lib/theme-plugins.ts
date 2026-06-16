@@ -4,4 +4,4 @@ export {
   VAR_MAP,
   type ThemeVariant,
   type ThemePlugin,
-} from "@kreativekorna/justui";
+} from "@codellyson/justui";

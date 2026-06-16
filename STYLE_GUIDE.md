@@ -2,7 +2,7 @@
 
 The visual + structural language shared across `justrunjs`, `justdb`,
 `justnotes`, and any future `just*` app. This file is the spec; until it
-ships as `@kreativekorna/justui` on npm, copy these patterns by hand.
+ships as `@codellyson/justui` on npm, copy these patterns by hand.
 
 ---
 
@@ -315,6 +315,5 @@ A new `just*` app starts with:
 Just UI is at **v0.1 (this spec)**. Breaking changes (token rename,
 theme structure change, etc.) bump the minor while we're <1.0.
 
-When this gets extracted to `@kreativekorna/justui`, that package's
-`package.json` version is the source of truth; this file becomes a
-mirror/changelog.
+The extracted `@codellyson/justui` npm package's `package.json` version
+is the source of truth; this file is a mirror/changelog.
