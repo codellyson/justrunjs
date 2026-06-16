@@ -55,13 +55,12 @@ jobs:
       - name: Build Astro
         run: pnpm --filter runjs-rs-marketing build
 
+      - name: Install wrangler globally
+        run: npm install -g wrangler@latest
+
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # `wrangler pages deploy` reads `pages_build_output_dir` from
-          # marketing/wrangler.toml (which is `./dist`).
-          workingDirectory: marketing
-          command: pages deploy dist --project-name=justrunjs --branch=${{ github.head_ref || github.ref_name }}
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: marketing
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: wrangler pages deploy dist --project-name=justrunjs --branch=${{ github.head_ref || github.ref_name }}
