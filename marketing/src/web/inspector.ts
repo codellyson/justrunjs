@@ -1,16 +1,8 @@
-// inspector.js — port of src/inspector.js for the browser, with Node-style
-// multi-line pretty-printing for wide objects/arrays so the results pane
-// looks like RunJS instead of one extremely-long horizontal line.
-//
-// Heuristic: render inline (`{ a: 1, b: 2 }`) when the single-line form fits
-// within BREAK_LENGTH. Otherwise break across lines, indented two spaces,
-// trailing comma on each entry. Matches what `util.inspect` does in Node.
-
 const MAX_DEPTH = 4;
 const BREAK_LENGTH = 72;
 const INDENT = "  ";
 
-function quoteString(s) {
+function quoteString(s: string): string {
   return (
     "'" +
     s.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\n/g, "\\n") +
@@ -18,56 +10,59 @@ function quoteString(s) {
   );
 }
 
-function isPlainKey(k) {
+function isPlainKey(k: string): boolean {
   return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(k);
 }
 
-/** Build an inline string for an object/array; if it's too wide for the
- * current depth's budget, switch to a multi-line form. */
-function joinWithBreak(prefix, open, close, parts, depth) {
+function joinWithBreak(
+  prefix: string,
+  open: string,
+  close: string,
+  parts: string[],
+  depth: number,
+): string {
   if (parts.length === 0) return `${prefix}${open}${close}`;
 
   const inlineSpacer = open === "[" ? " " : " ";
   const inline = `${prefix}${open}${inlineSpacer}${parts.join(", ")}${inlineSpacer}${close}`;
-  // No newlines allowed in the inline form — a nested object that's already
-  // multi-line forces the parent to multi-line too.
   if (inline.length <= BREAK_LENGTH && !parts.some((p) => p.includes("\n"))) {
     return inline;
   }
 
   const inner = INDENT.repeat(depth + 1);
   const outer = INDENT.repeat(depth);
-  // indent nested newlines so a multi-line child inside a parent reads right
   const indented = parts.map((p) => p.replace(/\n/g, "\n" + inner));
   return `${prefix}${open}\n${inner}${indented.join(",\n" + inner)},\n${outer}${close}`;
 }
 
-function inspect(value, depth, seen) {
+function inspect(value: unknown, depth: number, seen: Set<object>): string {
   const t = typeof value;
 
   if (value === null) return "null";
   if (t === "undefined") return "undefined";
-  if (t === "string") return quoteString(value);
+  if (t === "string") return quoteString(value as string);
   if (t === "number") return Object.is(value, -0) ? "-0" : String(value);
   if (t === "boolean") return String(value);
   if (t === "bigint") return String(value) + "n";
-  if (t === "symbol") return value.toString();
+  if (t === "symbol") return (value as symbol).toString();
   if (t === "function") {
-    const name = value.name;
-    const kind = /^class[\s{]/.test(Function.prototype.toString.call(value))
+    const fn = value as Function;
+    const name = fn.name;
+    const kind = /^class[\s{]/.test(Function.prototype.toString.call(fn))
       ? "class"
       : "Function";
     return name ? `[${kind}: ${name}]` : `[${kind} (anonymous)]`;
   }
 
-  if (seen.has(value)) return "[Circular *1]";
+  const obj = value as object;
+  if (seen.has(obj)) return "[Circular *1]";
   if (depth > MAX_DEPTH) return Array.isArray(value) ? "[Array]" : "[Object]";
 
-  seen.add(value);
+  seen.add(obj);
   try {
     if (value instanceof Map) {
       if (value.size === 0) return `Map(0) {}`;
-      const parts = [];
+      const parts: string[] = [];
       for (const [k, v] of value) {
         parts.push(
           `${inspect(k, depth + 1, seen)} => ${inspect(v, depth + 1, seen)}`,
@@ -78,7 +73,7 @@ function inspect(value, depth, seen) {
 
     if (value instanceof Set) {
       if (value.size === 0) return `Set(0) {}`;
-      const parts = [];
+      const parts: string[] = [];
       for (const v of value) parts.push(inspect(v, depth + 1, seen));
       return joinWithBreak(`Set(${value.size}) `, "{", "}", parts, depth);
     }
@@ -94,31 +89,33 @@ function inspect(value, depth, seen) {
     if (value instanceof Error) return `${value.name}: ${value.message}`;
     if (value instanceof Promise) return "Promise { <pending> }";
 
-    const ctor = value.constructor && value.constructor.name;
+    const ctor = (obj as { constructor?: { name?: string } }).constructor?.name;
     const prefix = ctor && ctor !== "Object" ? ctor + " " : "";
 
-    const keys = Object.keys(value);
-    const symKeys = Object.getOwnPropertySymbols(value).filter(
-      (s) => Object.getOwnPropertyDescriptor(value, s).enumerable,
+    const record = obj as Record<string, unknown>;
+    const keys = Object.keys(record);
+    const symKeys = Object.getOwnPropertySymbols(obj).filter(
+      (s) => Object.getOwnPropertyDescriptor(obj, s)?.enumerable,
     );
     if (keys.length === 0 && symKeys.length === 0) {
       return prefix ? prefix + "{}" : "{}";
     }
 
-    const parts = [];
+    const parts: string[] = [];
     for (const k of keys) {
       const keyStr = isPlainKey(k) ? k : quoteString(k);
-      parts.push(`${keyStr}: ${inspect(value[k], depth + 1, seen)}`);
+      parts.push(`${keyStr}: ${inspect(record[k], depth + 1, seen)}`);
     }
     for (const s of symKeys) {
-      parts.push(`[${s.toString()}]: ${inspect(value[s], depth + 1, seen)}`);
+      const symRecord = obj as unknown as Record<symbol, unknown>;
+      parts.push(`[${s.toString()}]: ${inspect(symRecord[s], depth + 1, seen)}`);
     }
     return joinWithBreak(prefix, "{", "}", parts, depth);
   } finally {
-    seen.delete(value);
+    seen.delete(obj);
   }
 }
 
-export function __inspect(value) {
+export function __inspect(value: unknown): string {
   return inspect(value, 0, new Set());
 }

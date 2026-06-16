@@ -1,14 +1,9 @@
+@import "@kreativekorna/justui/tokens.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/*
- * Unified scrollbars. The native chrome looks loud against a calm theme
- * and varies wildly between OS + scroll-mode (Always vs On Scroll on macOS,
- * stock Windows, stock Linux). Replacing with a thin, token-tinted track
- * means every surface (body, theme picker panel, FAQ overflow, etc.) reads
- * with the same visual weight.
- */
 * {
   scrollbar-width: thin;
   scrollbar-color: rgb(var(--border)) transparent;
@@ -32,30 +27,6 @@
 }
 *::-webkit-scrollbar-corner {
   background: transparent;
-}
-
-/*
- * Theme tokens are applied by JS at boot — the boot script in Layout.astro
- * reads the user's stored theme + mode and writes the variant's RGB triplets
- * to `<html>` inline. These :root values are just the SSR/no-JS fallback so
- * the page never paints unstyled.
- *
- * Defaults to Espresso dark — warm, calm, matches the editor surface.
- */
-
-:root {
-  --bg: 22 20 18;
-  --bg-secondary: 37 33 30;
-  --border: 56 50 45;
-  --text-primary: 232 222 210;
-  --text-secondary: 178 167 152;
-  --text-muted: 124 114 102;
-  --accent: 168 180 220;
-  --accent-hover: 195 205 235;
-  --accent-text: 22 20 18;
-  --danger: 220 105 95;
-  --success: 165 195 130;
-  --warning: 230 195 115;
 }
 
 @layer base {

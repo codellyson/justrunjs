@@ -1,20 +1,5 @@
-// runjs web — main thread.
-//
-// CodeMirror 6 editor on the left, results pane on the right, both behind a
-// thin worker bridge. Source flows to ./worker.js, which transpiles+evals and
-// posts {line, display} pairs back. Stop terminates the worker; we always
-// spawn a replacement so the next eval doesn't wait.
-//
-// Intentionally lighter than ui/main.js — no tabs, no formatter, no settings
-// popover. We can layer those in once the eval pipeline is proven.
-
-// Bundled by Vite (Astro) via NPM. Vite dedupes every CodeMirror sub-package
-// and @lezer/highlight to a single instance — which is the actual fix for the
-// "everything is white" failure. esm.sh's URL-based dedup couldn't guarantee
-// that lang-javascript's parser tags and our HighlightStyle's tag references
-// were the SAME object instance, so the highlighter silently no-op'd.
 import { basicSetup } from "codemirror";
-import { EditorState, Compartment, Prec } from "@codemirror/state";
+import { EditorState, Compartment, Prec, type Extension } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { indentWithTab } from "@codemirror/commands";
 import { javascript } from "@codemirror/lang-javascript";
@@ -24,6 +9,83 @@ import {
   indentUnit,
 } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
+
+interface LineResult {
+  line: number;
+  display: string;
+}
+
+interface EvalOutcome {
+  results: LineResult[];
+  ms: number;
+}
+
+interface Transport {
+  evaluate(source: string): Promise<EvalOutcome>;
+  stop(): void;
+}
+
+type ReadyMessage = { type: "ready" };
+type ReplyMessage =
+  | { id: number; ok: true; results: LineResult[]; ms: number }
+  | { id: number; ok: false; error: string };
+type WorkerMessage = ReadyMessage | ReplyMessage;
+
+interface TauriWindowHandle {
+  minimize(): void | Promise<void>;
+  toggleMaximize(): void | Promise<void>;
+  close(): void | Promise<void>;
+  isMaximized(): Promise<boolean>;
+  onResized(cb: () => void): Promise<() => void>;
+}
+
+interface TauriCore {
+  invoke<T = unknown>(cmd: string, args?: Record<string, unknown>): Promise<T>;
+}
+
+interface TauriWindowApi {
+  getCurrentWindow(): TauriWindowHandle;
+}
+
+interface TauriGlobal {
+  core?: TauriCore;
+  window?: TauriWindowApi;
+}
+
+declare global {
+  interface Window {
+    __TAURI__?: TauriGlobal;
+  }
+}
+
+interface ThemeVariant {
+  bg?: string;
+  bgSecondary?: string;
+  border?: string;
+  textPrimary?: string;
+  textSecondary?: string;
+  textMuted?: string;
+  accent?: string;
+  accentHover?: string;
+  accentText?: string;
+  danger?: string;
+  success?: string;
+  warning?: string;
+}
+
+interface ThemeDefinition {
+  light: ThemeVariant;
+  dark: ThemeVariant;
+}
+
+type LanguageId = "typescript" | "javascript";
+
+interface Tab {
+  id: string;
+  name: string;
+  content: string;
+  language: LanguageId;
+}
 
 const STARTER = `// justrunjs in the browser — every top-level value shows up on the right.
 
@@ -38,33 +100,29 @@ const total = await Promise.resolve(40 + 2);
 total;
 `;
 
-// --- tabs ------------------------------------------------------------------
-// Each tab is an independent buffer with its own language. Persisted under
-// runjs.tabs as { tabs: [{id, name, content, language}], activeId }.
-
 const TABS_KEY = "runjs.tabs";
 
-// Pre-seed content for a fresh +npm tab — gives the user a working example
-// they can immediately tweak.
 const NPM_TEMPLATE = `// Any npm package, served as ESM via esm.sh.
 import _ from "npm:lodash@4";
 
 _.chunk([1, 2, 3, 4, 5], 2);
 `;
 
-let tabs = [];
-let activeId = null;
+let tabs: Tab[] = [];
+let activeId: string | null = null;
 
-function loadTabs() {
+function loadTabs(): void {
   const raw = localStorage.getItem(TABS_KEY);
   if (raw) {
     try {
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(raw) as { tabs?: Tab[]; activeId?: string };
       if (Array.isArray(parsed.tabs) && parsed.tabs.length > 0) {
         tabs = parsed.tabs;
         activeId = parsed.activeId || tabs[0].id;
       }
-    } catch {}
+    } catch {
+      /* fall through to defaults */
+    }
   }
   if (tabs.length === 0) {
     tabs = [
@@ -80,57 +138,40 @@ function loadTabs() {
 }
 loadTabs();
 
-function getActiveTab() {
+function getActiveTab(): Tab {
   return tabs.find((t) => t.id === activeId) || tabs[0];
 }
 
-function persistTabs() {
+function persistTabs(): void {
   const active = getActiveTab();
   if (active) active.content = editor.state.doc.toString();
   localStorage.setItem(TABS_KEY, JSON.stringify({ tabs, activeId }));
 }
 
-function languageExt(lang) {
+function languageExt(lang: LanguageId): Extension {
   return javascript({ typescript: lang === "typescript" });
 }
 
-const sidebarStatusEl = document.getElementById("sidebar-status");
-const resultsEl = document.getElementById("results");
+const sidebarStatusEl = document.getElementById("sidebar-status") as HTMLElement;
+const resultsEl = document.getElementById("results") as HTMLElement;
 
 const resultsInner = document.createElement("div");
 resultsInner.id = "results-inner";
 resultsEl.appendChild(resultsInner);
 
-const STATES = ["ready", "running", "ok", "error"];
-function setStatus(text, state) {
+type StatusState = "ready" | "running" | "ok" | "error";
+const STATES: StatusState[] = ["ready", "running", "ok", "error"];
+function setStatus(text: string, state?: StatusState): void {
   sidebarStatusEl.title = text;
   for (const s of STATES) sidebarStatusEl.classList.remove(s);
   if (state) sidebarStatusEl.classList.add(state);
 }
 
-// --- editor theme ----------------------------------------------------------
-
-// The editor surface reads the same theme tokens as the page chrome (set on
-// <html> by theme-boot.js), so picking Gruvbox / Mocha / Solarized flows all
-// the way down into the CodeMirror background, gutter, caret, and selection.
-//
-// `EditorView.theme` ships the rules as a real stylesheet so `var(--bg)` is
-// resolved at use-time — the browser picks up the current value of the
-// custom property even when it changes after first paint.
 const editorTheme = EditorView.theme(
   {
-    // Note: we deliberately do NOT set `color` here. EditorView.theme
-    // scopes its selectors under the editor's generated class, which
-    // outranks the unscoped `.tok-keyword` / `.tok-string` selectors that
-    // HighlightStyle ships — so any `color` declared here clobbers the
-    // entire syntax palette. Background + size only; text colour falls
-    // through from the body's `color: rgb(var(--text-primary))` and is
-    // overridden per-token by HighlightStyle.
     "&": {
       backgroundColor: "rgb(var(--bg))",
       height: "100%",
-      // Read from a CSS custom property so the settings popover can change
-      // the font size without rebuilding the editor's theme.
       fontSize: "var(--editor-font-size, 14px)",
     },
     ".cm-content": {
@@ -160,19 +201,13 @@ const editorTheme = EditorView.theme(
     },
     "&.cm-focused": { outline: "none" },
   },
-  // `dark` is a hint to CodeMirror's default extensions about selection
-  // colors etc. The picked theme might be light, so flip the hint at
-  // construction time by reading the data attribute the boot script set.
   {
-    dark: (typeof document !== "undefined" &&
-      document.documentElement.dataset.themeMode !== "light"),
+    dark:
+      typeof document !== "undefined" &&
+      document.documentElement.dataset.themeMode !== "light",
   },
 );
 
-// Two syntax-highlight palettes — one tuned for dark backgrounds (the warm
-// punched-up tones), one for light (GitHub-like saturated tones that read
-// against white). We swap between them at runtime via a Compartment when the
-// user toggles theme mode in the marketing picker.
 const darkHighlight = HighlightStyle.define([
   { tag: tags.keyword, color: "#e879a4" },
   { tag: tags.controlKeyword, color: "#e879a4" },
@@ -225,31 +260,28 @@ const lightHighlight = HighlightStyle.define([
   { tag: tags.escape, color: "#116329" },
 ]);
 
-function highlightFor(mode) {
+type Mode = "light" | "dark";
+
+function highlightFor(mode: Mode): Extension {
   return syntaxHighlighting(mode === "light" ? lightHighlight : darkHighlight);
 }
-
-// --- editor ---------------------------------------------------------------
 
 const highlightCompartment = new Compartment();
 const languageCompartment = new Compartment();
 const tabSizeCompartment = new Compartment();
 const wordWrapCompartment = new Compartment();
-// Empty until the async TS environment finishes booting (lib files load
-// from the CDN); then reconfigured with tsFacet/tsSync/tsLinter/...
 const tsCompartment = new Compartment();
 
-// --- persisted settings (read at boot, written by settings popover) -------
 const FONT_SIZE_KEY = "runjs.fontSize";
 const TAB_SIZE_KEY = "runjs.tabSize";
 const WORD_WRAP_KEY = "runjs.wordWrap";
 const AUTO_EVAL_KEY = "runjs.autoEval";
 
-function readInt(key, fallback) {
+function readInt(key: string, fallback: number): number {
   const v = parseInt(localStorage.getItem(key) || "", 10);
   return Number.isFinite(v) ? v : fallback;
 }
-function readBool(key, fallback) {
+function readBool(key: string, fallback: boolean): boolean {
   const v = localStorage.getItem(key);
   if (v === null) return fallback;
   return v !== "false";
@@ -260,13 +292,12 @@ let tabSize = readInt(TAB_SIZE_KEY, 2);
 let wordWrap = readBool(WORD_WRAP_KEY, true);
 let autoEval = readBool(AUTO_EVAL_KEY, true);
 
-// Apply font size before editor mount so first paint is at the right size.
 document.documentElement.style.setProperty(
   "--editor-font-size",
   fontSize + "px",
 );
 
-function currentMode() {
+function currentMode(): Mode {
   return document.documentElement.dataset.themeMode === "light"
     ? "light"
     : "dark";
@@ -274,7 +305,7 @@ function currentMode() {
 
 const _bootTab = getActiveTab();
 const editor = new EditorView({
-  parent: document.getElementById("editor-host"),
+  parent: document.getElementById("editor-host") as HTMLElement,
   state: EditorState.create({
     doc: _bootTab.content,
     extensions: [
@@ -300,14 +331,7 @@ const editor = new EditorView({
         },
       ]),
       languageCompartment.of(languageExt(_bootTab.language)),
-      // Prec.highest so the TS extensions outrank basicSetup's bundled
-      // `autocompletion()` (otherwise its config — no `override` — wins the
-      // facet merge and tsAutocomplete never gets called). Same reason for
-      // why we wrap the highlight compartment in Prec.highest above.
       Prec.highest(tsCompartment.of([])),
-      // Prec.highest forces our palette ahead of the editor theme's scoped
-      // colour rules (the theme is .cm-editor.ͼXYZ-scoped, syntax tags are
-      // unscoped class selectors at lower default specificity).
       Prec.highest(highlightCompartment.of(highlightFor(currentMode()))),
       editorTheme,
       EditorView.updateListener.of((update) => {
@@ -320,10 +344,18 @@ const editor = new EditorView({
   }),
 });
 
-// --- value type classifier ------------------------------------------------
-
 const NUMERIC = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
-function classify(s) {
+type ValueKind =
+  | "object"
+  | "null"
+  | "bool"
+  | "bigint"
+  | "number"
+  | "string"
+  | "array"
+  | "function"
+  | "symbol";
+function classify(s: string): ValueKind {
   if (!s) return "object";
   if (s === "null") return "null";
   if (s === "undefined") return "null";
@@ -342,17 +374,10 @@ function classify(s) {
   return "object";
 }
 
-// --- results painter ------------------------------------------------------
-//
-// Flowing console (RunJS-style): captures stack top-to-bottom in arrival
-// order. Each visual line gets a sequential row number. Multi-line values
-// (pretty-printed objects/arrays) split across multiple DOM rows so the
-// numbering and hover affordances apply per line.
+let lastResults: LineResult[] = [];
+let lastError: string | null = null;
 
-let lastResults = [];
-let lastError = null;
-
-function appendRow(seq, text, klass) {
+function appendRow(seq: number, text: string, klass: string | null): HTMLSpanElement {
   const row = document.createElement("div");
   row.className = "result-row" + (klass ? " " + klass : "");
   const seqEl = document.createElement("span");
@@ -367,7 +392,7 @@ function appendRow(seq, text, klass) {
   return value;
 }
 
-function paintResults() {
+function paintResults(): void {
   resultsInner.innerHTML = "";
 
   if (lastError) {
@@ -389,76 +414,68 @@ function paintResults() {
     const klass = "v-" + classify(r.display);
     const lines = r.display.split("\n");
     for (let i = 0; i < lines.length; i++) {
-      // Only the first line of a multi-line value carries the type accent
-      // class — continuation lines inherit the default colour so the
-      // structural braces/commas aren't tinted as if they were the value.
       const v = appendRow(seq++, lines[i], i === 0 ? klass : null);
       if (i === 0) v.title = r.display;
     }
   }
 }
 
-// --- eval transport ------------------------------------------------------
-// The editor talks to the eval engine through a thin `{ evaluate, stop }`
-// interface. Two implementations:
-//   - Tauri: routes through #[tauri::command] invoke('evaluate_source') and
-//     invoke('stop_eval') — the long-lived V8 worker thread on the Rust side.
-//   - Browser: posts to a Web Worker that runs @babel/standalone + dynamic
-//     import on a Blob URL.
-// The desktop and web surfaces now share one editor; only this transport
-// changes.
+const tauriCore: TauriCore | undefined =
+  typeof window !== "undefined" && window.__TAURI__
+    ? window.__TAURI__.core
+    : undefined;
 
-const tauriCore =
-  typeof window !== "undefined" && window.__TAURI__ && window.__TAURI__.core;
-
-const transport = tauriCore
+const transport: Transport = tauriCore
   ? createTauriTransport(tauriCore)
   : createWorkerTransport();
 
-function createTauriTransport(core) {
+function createTauriTransport(core: TauriCore): Transport {
   return {
-    async evaluate(source) {
+    async evaluate(source: string): Promise<EvalOutcome> {
       const t0 = performance.now();
-      const results = await core.invoke("evaluate_source", { source });
+      const results = await core.invoke<LineResult[]>("evaluate_source", { source });
       return { results, ms: Math.round(performance.now() - t0) };
     },
-    stop() {
-      // Fire-and-forget — the V8 worker calls terminate_execution()
-      // synchronously from another thread; we don't need to await it.
+    stop(): void {
       core.invoke("stop_eval").catch(() => {});
     },
   };
 }
 
-function createWorkerTransport() {
-  let worker = null;
-  let workerReady = null;
-  const pendingReplies = new Map();
+function createWorkerTransport(): Transport {
+  let worker: Worker | null = null;
+  let workerReady: Promise<void> = Promise.resolve();
+  const pendingReplies = new Map<
+    number,
+    { resolve: (v: EvalOutcome) => void; reject: (e: Error) => void }
+  >();
   let evalSeq = 0;
 
-  function spawn() {
-    let resolveReady, rejectReady;
-    workerReady = new Promise((res, rej) => {
+  function spawn(): void {
+    let resolveReady!: () => void;
+    let rejectReady!: (e: Error) => void;
+    workerReady = new Promise<void>((res, rej) => {
       resolveReady = res;
       rejectReady = rej;
     });
-    worker = new Worker(new URL("./worker.js", import.meta.url), {
+    worker = new Worker(new URL("./worker.ts", import.meta.url), {
       type: "module",
     });
-    worker.onmessage = (e) => {
-      const data = e.data || {};
-      if (data.type === "ready") {
+    worker.onmessage = (e: MessageEvent<WorkerMessage>) => {
+      const data = e.data;
+      if (!data) return;
+      if ("type" in data && data.type === "ready") {
         resolveReady();
         return;
       }
-      const { id, ok, results, error, ms } = data;
-      const entry = pendingReplies.get(id);
+      if (!("id" in data)) return;
+      const entry = pendingReplies.get(data.id);
       if (!entry) return;
-      pendingReplies.delete(id);
-      if (ok) entry.resolve({ results, ms });
-      else entry.reject(new Error(error || "eval failed"));
+      pendingReplies.delete(data.id);
+      if (data.ok) entry.resolve({ results: data.results, ms: data.ms });
+      else entry.reject(new Error(data.error || "eval failed"));
     };
-    worker.onerror = (e) => {
+    worker.onerror = (e: ErrorEvent) => {
       const msg =
         e.message ||
         (e.filename ? `${e.filename}:${e.lineno}` : "worker failed to start");
@@ -473,18 +490,15 @@ function createWorkerTransport() {
   spawn();
 
   return {
-    async evaluate(source) {
+    async evaluate(source: string): Promise<EvalOutcome> {
       await workerReady;
       const id = ++evalSeq;
-      return new Promise((resolve, reject) => {
+      return new Promise<EvalOutcome>((resolve, reject) => {
         pendingReplies.set(id, { resolve, reject });
-        worker.postMessage({ id, source });
+        worker!.postMessage({ id, source });
       });
     },
-    stop() {
-      // The browser equivalent of v8 terminate_execution(): nuke the worker
-      // and immediately spawn a replacement so the next keystroke doesn't
-      // wait for a cold start.
+    stop(): void {
       if (worker) {
         for (const [, entry] of pendingReplies) entry.reject(new Error("stopped"));
         pendingReplies.clear();
@@ -495,14 +509,12 @@ function createWorkerTransport() {
   };
 }
 
-// --- eval pipeline -------------------------------------------------------
-
-let timer = null;
+let timer: ReturnType<typeof setTimeout> | null = null;
 let inFlight = false;
 let pending = false;
 let evalGen = 0;
 
-async function runEval() {
+async function runEval(): Promise<void> {
   if (inFlight) {
     pending = true;
     return;
@@ -513,7 +525,7 @@ async function runEval() {
   setStatus("running…", "running");
   try {
     const { results, ms } = await transport.evaluate(source);
-    if (myGen !== evalGen) return; // Stop cancelled this eval mid-flight.
+    if (myGen !== evalGen) return;
     lastError = null;
     lastResults = results;
     paintResults();
@@ -523,7 +535,7 @@ async function runEval() {
     );
   } catch (e) {
     if (myGen !== evalGen) return;
-    const msg = e && e.message ? e.message : String(e);
+    const msg = e instanceof Error ? e.message : String(e);
     lastError = msg;
     lastResults = [];
     paintResults();
@@ -537,7 +549,7 @@ async function runEval() {
   }
 }
 
-function stopEval() {
+function stopEval(): void {
   if (timer) {
     clearTimeout(timer);
     timer = null;
@@ -549,42 +561,31 @@ function stopEval() {
   setStatus("stopped", "ready");
 }
 
-function schedule() {
+function schedule(): void {
   if (timer) clearTimeout(timer);
-  // Auto-evaluate can be turned off in settings — typing still updates the
-  // buffer, but the user has to hit Run / Cmd+Enter to evaluate.
   if (!autoEval) return;
   timer = setTimeout(runEval, 300);
 }
 
 runEval();
 
-// --- IntelliSense (async boot) -------------------------------------------
-// Load TypeScript + lib.*.d.ts files in the background; once the virtual
-// environment is ready, swap in the IntelliSense extensions through the
-// pre-installed Compartment. The editor stays fully usable during boot —
-// the user just doesn't get type info / autocomplete until this resolves.
 (async () => {
   setStatus("loading IntelliSense…", "running");
   try {
-    const { createTsEnv } = await import("./ts-env.js");
+    const { createTsEnv } = await import("./ts-env.ts");
     const { extensions } = await createTsEnv();
     editor.dispatch({
       effects: tsCompartment.reconfigure(extensions),
     });
     setStatus("IntelliSense ready", "ok");
   } catch (e) {
-    const msg = e && e.message ? e.message : String(e);
+    const msg = e instanceof Error ? e.message : String(e);
     setStatus("IntelliSense failed: " + msg, "error");
-    // Re-throw so the boot-error overlay shows the full stack — this is the
-    // only way we can debug remote failures right now.
     throw e;
   }
 })();
 
-// --- sidebar wiring ------------------------------------------------------
-
-document.getElementById("btn-run").addEventListener("click", () => {
+document.getElementById("btn-run")!.addEventListener("click", () => {
   if (timer) {
     clearTimeout(timer);
     timer = null;
@@ -592,14 +593,8 @@ document.getElementById("btn-run").addEventListener("click", () => {
   runEval();
 });
 
-document.getElementById("btn-stop").addEventListener("click", stopEval);
+document.getElementById("btn-stop")!.addEventListener("click", stopEval);
 
-// --- embed mode ----------------------------------------------------------
-// When this page is loaded inside an iframe on the marketing site, we hide
-// the home/back button (the parent already provides chrome) and surface a
-// fullscreen toggle that posts to the parent. Detection: `?embed=1`, OR a
-// parent window that isn't us. Also hide the home button when running under
-// Tauri — the desktop shell has no marketing page to navigate back to.
 const isEmbedded =
   new URLSearchParams(window.location.search).get("embed") === "1" ||
   window.parent !== window;
@@ -609,16 +604,8 @@ if (isEmbedded || tauriCore) {
   if (home) home.style.display = "none";
 }
 
-// --- custom title bar (Tauri only) --------------------------------------
-// Ported from justdb/apps/web/src/components/tauri-title-bar.tsx.
-// On macOS, tauri.macos.conf.json flips decorations back on with
-// titleBarStyle: Overlay + hiddenTitle: true — the OS draws the traffic
-// lights, content extends behind them. We skip our custom bar there and
-// just reserve 80px on the tab bar's left for the traffic-light zone, plus
-// make it a drag region. On Windows/Linux (base config decorations: false)
-// we render the full custom bar with min/max/close.
 const isMac =
-  tauriCore && typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent);
+  !!tauriCore && typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent);
 
 if (tauriCore && isMac) {
   const tabsEl = document.getElementById("tabs");
@@ -635,14 +622,16 @@ if (tauriCore && !isMac) {
     document.body.classList.add("has-titlebar");
 
     const win = window.__TAURI__ && window.__TAURI__.window;
-    function withWindow(method) {
+    const withWindow = (method: "minimize" | "toggleMaximize" | "close"): void => {
       if (!win || !win.getCurrentWindow) return;
       try {
         const w = win.getCurrentWindow();
         const fn = w[method];
         if (typeof fn === "function") fn.call(w);
-      } catch (_) {}
-    }
+      } catch {
+        /* ignore */
+      }
+    };
     const minBtn = document.getElementById("btn-tb-min");
     const maxBtn = document.getElementById("btn-tb-max");
     const closeBtn = document.getElementById("btn-tb-close");
@@ -650,18 +639,19 @@ if (tauriCore && !isMac) {
     if (maxBtn) maxBtn.addEventListener("click", () => withWindow("toggleMaximize"));
     if (closeBtn) closeBtn.addEventListener("click", () => withWindow("close"));
 
-    // Track maximized state so the icon swap matches reality.
     (async () => {
       if (!win || !win.getCurrentWindow) return;
       try {
         const w = win.getCurrentWindow();
-        const refresh = async () => {
+        const refresh = async (): Promise<void> => {
           const m = await w.isMaximized();
           titlebar.classList.toggle("is-maximized", m);
         };
         await refresh();
         await w.onResized(refresh);
-      } catch (_) {}
+      } catch {
+        /* ignore */
+      }
     })();
   }
 }
@@ -673,15 +663,15 @@ if (isEmbedded) {
     expand.addEventListener("click", () => {
       try {
         window.parent.postMessage({ type: "toggle" }, "*");
-      } catch (_) {}
+      } catch {
+        /* ignore */
+      }
     });
   }
 }
 
-// Parent tells us its current state so we can flip the icon between expand
-// and collapse. Posted right after the parent toggles its CSS class.
-window.addEventListener("message", (e) => {
-  const data = e.data;
+window.addEventListener("message", (e: MessageEvent) => {
+  const data = e.data as { type?: string } | null;
   if (!data || typeof data !== "object") return;
   const expand = document.getElementById("btn-expand");
   if (!expand) return;
@@ -689,12 +679,8 @@ window.addEventListener("message", (e) => {
   else if (data.type === "collapsed") expand.classList.remove("is-expanded");
 });
 
-// --- live theme-mode swap ------------------------------------------------
-// theme-boot.js writes data-theme-mode on <html> at boot AND on cross-tab
-// storage events; the marketing picker writes it on local clicks. Both paths
-// trigger this observer, which swaps the highlight palette without a reload.
 let lastMode = currentMode();
-function syncHighlight() {
+function syncHighlight(): void {
   const mode = currentMode();
   if (mode === lastMode) return;
   lastMode = mode;
@@ -707,11 +693,9 @@ new MutationObserver(syncHighlight).observe(document.documentElement, {
   attributeFilter: ["data-theme-mode"],
 });
 
-// --- tab bar -------------------------------------------------------------
-
 const tabsEl = document.getElementById("tabs");
 
-function activateTab(id) {
+function activateTab(id: string): void {
   if (id === activeId) return;
   const out = getActiveTab();
   if (out) out.content = editor.state.doc.toString();
@@ -726,7 +710,7 @@ function activateTab(id) {
   schedule();
 }
 
-function nextUntitled(lang) {
+function nextUntitled(lang: LanguageId): string {
   const ext = lang === "typescript" ? "ts" : "js";
   for (let n = 1; ; n++) {
     const name = n === 1 ? `untitled.${ext}` : `untitled${n}.${ext}`;
@@ -734,13 +718,13 @@ function nextUntitled(lang) {
   }
 }
 
-function newTab(lang = "typescript", content = "") {
+function newTab(lang: LanguageId = "typescript", content = ""): void {
   const id = "t-" + Date.now();
   tabs.push({ id, name: nextUntitled(lang), content, language: lang });
   activateTab(id);
 }
 
-function closeTab(id) {
+function closeTab(id: string): void {
   if (tabs.length <= 1) return;
   const idx = tabs.findIndex((t) => t.id === id);
   if (idx === -1) return;
@@ -762,7 +746,7 @@ function closeTab(id) {
   persistTabs();
 }
 
-function toggleTabLang(id) {
+function toggleTabLang(id: string): void {
   const t = tabs.find((tab) => tab.id === id);
   if (!t) return;
   t.language = t.language === "typescript" ? "javascript" : "typescript";
@@ -778,7 +762,7 @@ function toggleTabLang(id) {
   persistTabs();
 }
 
-function renderTabs() {
+function renderTabs(): void {
   if (!tabsEl) return;
   tabsEl.innerHTML = "";
   for (const t of tabs) {
@@ -841,11 +825,6 @@ function renderTabs() {
 
 renderTabs();
 
-// --- settings popover ----------------------------------------------------
-// Single panel: Appearance (theme picker + light/dark mode) and Editor
-// (font size, tab size, line numbers, word wrap, auto-evaluate). All values
-// persist to localStorage under runjs.* keys.
-
 const SHOW_LINE_NUMBERS_KEY = "runjs.showLineNumbers";
 let showLineNumbers = readBool(SHOW_LINE_NUMBERS_KEY, true);
 document.body.classList.toggle("hide-line-numbers", !showLineNumbers);
@@ -854,19 +833,19 @@ const settingsBtn = document.getElementById("btn-settings");
 const popover = document.getElementById("settings-popover");
 
 if (settingsBtn && popover) {
-  // Open/close
   settingsBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     popover.classList.toggle("hidden");
   });
   document.addEventListener("click", (e) => {
     if (popover.classList.contains("hidden")) return;
-    if (popover.contains(e.target) || settingsBtn.contains(e.target)) return;
+    const target = e.target as Node | null;
+    if (!target) return;
+    if (popover.contains(target) || settingsBtn.contains(target)) return;
     popover.classList.add("hidden");
   });
 
-  // --- Appearance: theme picker + mode toggle -----------------------------
-  const VAR_MAP = {
+  const VAR_MAP: Record<keyof ThemeVariant, string> = {
     bg: "--bg",
     bgSecondary: "--bg-secondary",
     border: "--border",
@@ -880,24 +859,23 @@ if (settingsBtn && popover) {
     success: "--success",
     warning: "--warning",
   };
-  function getThemes() { return window.__RUNJS_THEMES__ || {}; }
-  function currentThemeId() {
-    return document.documentElement.dataset.themeId || "espresso";
-  }
-  function currentThemeMode() {
-    return document.documentElement.dataset.themeMode === "light"
-      ? "light"
-      : "dark";
-  }
-  function applyVariant(variant, mode) {
+  const getThemes = (): Record<string, ThemeDefinition> =>
+    window.__JUSTUI__?.themes || {};
+  const currentThemeId = (): string =>
+    document.documentElement.dataset.themeId || "espresso";
+  const currentThemeMode = (): Mode =>
+    document.documentElement.dataset.themeMode === "light" ? "light" : "dark";
+  const applyVariant = (variant: ThemeVariant, mode: Mode): void => {
     const root = document.documentElement;
     for (const k in VAR_MAP) {
-      if (variant[k]) root.style.setProperty(VAR_MAP[k], variant[k]);
+      const key = k as keyof ThemeVariant;
+      const val = variant[key];
+      if (val) root.style.setProperty(VAR_MAP[key], val);
     }
     if (mode === "dark") root.classList.add("dark");
     else root.classList.remove("dark");
-  }
-  function applyTheme(themeId, mode) {
+  };
+  const applyTheme = (themeId: string, mode: Mode): void => {
     const themes = getThemes();
     const theme = themes[themeId];
     if (!theme) return;
@@ -905,38 +883,41 @@ if (settingsBtn && popover) {
     document.documentElement.dataset.themeId = themeId;
     document.documentElement.dataset.themeMode = mode;
     try {
-      localStorage.setItem("runjs.theme.id", themeId);
-      localStorage.setItem("runjs.theme.mode", mode);
-    } catch {}
+      const ctx = window.__JUSTUI__;
+      localStorage.setItem(ctx?.idKey ?? "runjs.theme.id", themeId);
+      localStorage.setItem(ctx?.modeKey ?? "runjs.theme.mode", mode);
+    } catch {
+      /* ignore */
+    }
     refreshAppearanceUI();
-  }
-  function refreshAppearanceUI() {
+  };
+  const refreshAppearanceUI = (): void => {
     const id = currentThemeId();
     const mode = currentThemeMode();
-    popover.querySelectorAll("[data-mode-label]").forEach((el) => {
+    popover.querySelectorAll<HTMLElement>("[data-mode-label]").forEach((el) => {
       el.classList.toggle("hidden", el.dataset.modeLabel !== mode);
     });
-    popover.querySelectorAll(".theme-option").forEach((btn) => {
+    popover.querySelectorAll<HTMLElement>(".theme-option").forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.themeOption === id);
     });
-  }
+  };
 
   const modeToggleBtn = document.getElementById("settings-mode-toggle");
   if (modeToggleBtn) {
     modeToggleBtn.addEventListener("click", () => {
-      const next = currentThemeMode() === "dark" ? "light" : "dark";
+      const next: Mode = currentThemeMode() === "dark" ? "light" : "dark";
       applyTheme(currentThemeId(), next);
     });
   }
-  popover.querySelectorAll(".theme-option").forEach((btn) => {
+  popover.querySelectorAll<HTMLElement>(".theme-option").forEach((btn) => {
     btn.addEventListener("click", () => {
-      applyTheme(btn.dataset.themeOption, currentThemeMode());
+      const id = btn.dataset.themeOption;
+      if (id) applyTheme(id, currentThemeMode());
     });
   });
   refreshAppearanceUI();
 
-  // --- Editor: font size --------------------------------------------------
-  const fontSizeInput = document.getElementById("opt-font-size");
+  const fontSizeInput = document.getElementById("opt-font-size") as HTMLInputElement | null;
   if (fontSizeInput) {
     fontSizeInput.value = String(fontSize);
     fontSizeInput.addEventListener("change", () => {
@@ -948,8 +929,7 @@ if (settingsBtn && popover) {
     });
   }
 
-  // --- Editor: tab size ---------------------------------------------------
-  popover.querySelectorAll('input[name="opt-tab-size"]').forEach((radio) => {
+  popover.querySelectorAll<HTMLInputElement>('input[name="opt-tab-size"]').forEach((radio) => {
     radio.checked = parseInt(radio.value, 10) === tabSize;
     radio.addEventListener("change", () => {
       if (!radio.checked) return;
@@ -961,8 +941,7 @@ if (settingsBtn && popover) {
     });
   });
 
-  // --- Editor: line numbers -----------------------------------------------
-  const lineNumbersToggle = document.getElementById("opt-line-numbers");
+  const lineNumbersToggle = document.getElementById("opt-line-numbers") as HTMLInputElement | null;
   if (lineNumbersToggle) {
     lineNumbersToggle.checked = showLineNumbers;
     lineNumbersToggle.addEventListener("change", () => {
@@ -972,8 +951,7 @@ if (settingsBtn && popover) {
     });
   }
 
-  // --- Editor: word wrap --------------------------------------------------
-  const wordWrapToggle = document.getElementById("opt-word-wrap");
+  const wordWrapToggle = document.getElementById("opt-word-wrap") as HTMLInputElement | null;
   if (wordWrapToggle) {
     wordWrapToggle.checked = wordWrap;
     wordWrapToggle.addEventListener("change", () => {
@@ -987,8 +965,7 @@ if (settingsBtn && popover) {
     });
   }
 
-  // --- Editor: auto-evaluate ----------------------------------------------
-  const autoEvalToggle = document.getElementById("opt-auto-eval");
+  const autoEvalToggle = document.getElementById("opt-auto-eval") as HTMLInputElement | null;
   if (autoEvalToggle) {
     autoEvalToggle.checked = autoEval;
     autoEvalToggle.addEventListener("change", () => {
@@ -1002,23 +979,27 @@ if (settingsBtn && popover) {
   }
 }
 
-// --- formatter (Prettier) -----------------------------------------------
-// Lazy-loaded on first use so cold start stays cheap. Bound to Cmd/Ctrl+Shift+F.
+interface PrettierStandalone {
+  format(code: string, opts: Record<string, unknown>): Promise<string>;
+}
+interface PrettierWrapper {
+  format(code: string): Promise<string>;
+}
 
-let prettierPromise = null;
-async function getPrettier() {
+let prettierPromise: Promise<PrettierWrapper> | null = null;
+async function getPrettier(): Promise<PrettierWrapper> {
   if (!prettierPromise) {
-    prettierPromise = (async () => {
+    prettierPromise = (async (): Promise<PrettierWrapper> => {
       const [std, ts, estree] = await Promise.all([
-        import("prettier/standalone"),
+        import("prettier/standalone") as Promise<PrettierStandalone>,
         import("prettier/plugins/typescript"),
         import("prettier/plugins/estree"),
       ]);
       return {
-        format: (code) =>
+        format: (code: string): Promise<string> =>
           std.format(code, {
             parser: "typescript",
-            plugins: [ts.default, estree.default],
+            plugins: [(ts as { default: unknown }).default, (estree as { default: unknown }).default],
             printWidth: 80,
             tabWidth: 2,
             useTabs: false,
@@ -1032,7 +1013,7 @@ async function getPrettier() {
   return prettierPromise;
 }
 
-async function formatBuffer() {
+async function formatBuffer(): Promise<void> {
   setStatus("formatting…", "running");
   try {
     const prettier = await getPrettier();
@@ -1047,16 +1028,15 @@ async function formatBuffer() {
     });
     setStatus("formatted", "ok");
   } catch (e) {
-    const msg = e && e.message ? e.message.split("\n")[0] : String(e);
+    const msg = e instanceof Error ? e.message.split("\n")[0] : String(e);
     setStatus("format failed: " + msg, "error");
   }
 }
 
-// --- draggable splitter --------------------------------------------------
-
 (function setupSplitter() {
   const splitter = document.getElementById("splitter");
   const mainEl = document.querySelector("main");
+  if (!splitter || !mainEl) return;
   let dragging = false;
   splitter.addEventListener("mousedown", (e) => {
     dragging = true;
@@ -1070,7 +1050,7 @@ async function formatBuffer() {
       200,
       Math.min(rect.width - 200, rect.right - e.clientX),
     );
-    mainEl.style.gridTemplateColumns = `1fr 4px ${rightWidth}px`;
+    (mainEl as HTMLElement).style.gridTemplateColumns = `1fr 4px ${rightWidth}px`;
   });
   window.addEventListener("mouseup", () => {
     dragging = false;

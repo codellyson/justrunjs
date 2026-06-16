@@ -1,6 +1,7 @@
 /target
 
-# Tauri build-time generated schemas (regenerated each build).
 /gen
+
+node_modules/
 
 Cargo.lock merge=binary

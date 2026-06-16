@@ -1,0 +1,12 @@
+{
+  "name": "justrunjs-workspace",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Workspace root for justrunjs (marketing site + browser editor + @kreativekorna/justui design system).",
+  "scripts": {
+    "dev": "pnpm --filter runjs-rs-marketing dev",
+    "tauri:dev": "cargo tauri dev",
+    "build": "pnpm --filter runjs-rs-marketing build",
+    "assets": "pnpm --filter runjs-rs-marketing assets"
+  }
+}

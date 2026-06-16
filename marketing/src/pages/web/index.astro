@@ -213,9 +213,9 @@ import { BUILT_IN_THEMES } from "../../lib/theme-plugins";
       // Theme tokens applied to <html> before stylesheets resolve. Imported
       // here so Astro/Vite bundles it; runs on the main thread synchronously
       // when the module loads.
-      import "../../web/theme-boot.js";
+      import "../../web/theme-boot.ts";
       // Editor runtime. CodeMirror + worker bridge.
-      import "../../web/main.js";
+      import "../../web/main.ts";
     </script>
   </body>
 </html>
