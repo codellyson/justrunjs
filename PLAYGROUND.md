@@ -234,11 +234,12 @@ verify/adjust in the shell:
 
 ---
 
-## 10. Open decisions (need a call before 2a)
+## 10. Decisions (resolved 2026-07-21)
 
-1. **Editor layout:** HTML/CSS/JS *sub-tabs* (one editor, compact — recommended)
-   vs. three *stacked* editors (classic JSBin, needs vertical room).
-2. **Run trigger:** live auto-run on type (reuse the auto-eval setting) vs. an
-   explicit Run for playgrounds (heavier because each run reloads the frame).
-3. **Inline values in playground JS on by default?** It's the differentiator,
-   but it's also more on screen — default-on with a toggle, or default-off?
+1. **Editor layout:** HTML/CSS/JS **sub-tabs** — one editor at a time, one
+   reconfigured CodeMirror. (Stacked editors deferred to a later layout option.)
+2. **Run trigger:** **live auto-run on type**, debounced, reusing the existing
+   auto-eval setting. Each run reloads the frame for clean state (§4).
+3. **Inline values in playground JS:** **on by default**, with a settings
+   toggle. The rendered-page-plus-per-line-values combo is the differentiator
+   (§6); people who want a plain sandbox can switch it off.
