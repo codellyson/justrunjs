@@ -12,6 +12,12 @@ import {
 } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 import { findExample } from "./examples.ts";
+import inspectorRaw from "./inspector.ts?raw";
+import {
+  PREVIEW_SOURCE,
+  buildBridge,
+  type PreviewMessage,
+} from "./preview-bootstrap.ts";
 import {
   decodeSharedBin,
   encodeShareUrl,
@@ -151,10 +157,13 @@ button {
 }
 `;
 
-const PLAYGROUND_JS = `const btn = document.getElementById("go");
+const PLAYGROUND_JS = `console.log("Hello from the console 👋", { ready: true });
+
+const btn = document.getElementById("go");
 let count = 0;
 btn.addEventListener("click", () => {
   count++;
+  console.log("clicked", count, "time" + (count === 1 ? "" : "s"));
   btn.textContent = \`Clicked \${count}×\`;
 });
 `;
@@ -264,6 +273,9 @@ resultsEl.appendChild(resultsInner);
 const previewFrame = document.getElementById(
   "preview",
 ) as HTMLIFrameElement | null;
+const previewPane = document.getElementById("preview-pane");
+const consoleLogEl = document.getElementById("console-log");
+const consoleCountEl = document.getElementById("console-count");
 
 const panelTabsEl = document.getElementById("panel-tabs");
 const PANELS: PanelId[] = ["html", "css", "js"];
@@ -678,6 +690,24 @@ function escapeHtml(s: string): string {
 // a playground actually renders. Cached across renders after that.
 let transpileMod: typeof import("./transpile.ts") | null = null;
 
+// The inspector, transpiled to plain JS once, inlined into the preview so its
+// console output matches the scratchpad's fidelity (Map(1) {…} etc.).
+let inspectorJs: string | null = null;
+async function getInspectorJs(): Promise<string> {
+  if (inspectorJs !== null) return inspectorJs;
+  if (!transpileMod) transpileMod = await import("./transpile.ts");
+  inspectorJs = transpileMod.transpile(inspectorRaw, { instrument: false }).code;
+  return inspectorJs;
+}
+
+// Each render gets a fresh nonce; console/error messages tagged with a stale
+// nonce (from a previous srcdoc still unloading) are dropped by the listener.
+let previewNonce = 0;
+let currentPreviewNonce = "";
+
+const escapeScriptClose = (code: string): string =>
+  code.replace(/<\/script/gi, "<\\/script");
+
 /** Assemble the playground document and load it into the sandboxed iframe. */
 async function renderPreview(): Promise<void> {
   const t = getActiveTab();
@@ -685,27 +715,72 @@ async function renderPreview(): Promise<void> {
   flushEditor();
   const { html: htmlSrc = "", css: cssSrc = "", js: jsSrc = "" } = t;
 
-  let body: string;
+  let userBody: string;
   try {
     if (!transpileMod) transpileMod = await import("./transpile.ts");
-    // Playground JS runs uninstrumented in 2a (inline values arrive in 2c).
+    // Playground JS runs uninstrumented in 2b (inline values arrive in 2c).
     const { code } = transpileMod.transpile(jsSrc, { instrument: false });
-    // Prevent a literal </script> in the transpiled output from closing the tag.
-    const safe = code.replace(/<\/script/gi, "<\\/script");
-    body = `<script type="module">\n${safe}\n</script>`;
+    userBody = `<script type="module">\n${escapeScriptClose(code)}\n</script>`;
     setStatus("rendered", "ok");
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    body = `<pre style="margin:16px;color:#b00020;font:13px ui-monospace,monospace;white-space:pre-wrap">${escapeHtml(msg)}</pre>`;
+    userBody = `<pre style="margin:16px;color:#b00020;font:13px ui-monospace,monospace;white-space:pre-wrap">${escapeHtml(msg)}</pre>`;
     setStatus(msg, "error");
   }
 
+  const inspector = await getInspectorJs();
+
   // The active tab may have changed while Babel/JS loaded — don't clobber.
   if (getActiveTab().id !== t.id) return;
+
+  const nonce = String(++previewNonce);
+  currentPreviewNonce = nonce;
+  clearConsole();
+
+  const bootstrap =
+    `<script type="module">\n${escapeScriptClose(inspector)}\n${escapeScriptClose(buildBridge(nonce))}\n</script>`;
+
   previewFrame.srcdoc =
     `<!doctype html><html><head><meta charset="utf-8">` +
-    `<style>${cssSrc}</style></head><body>\n${htmlSrc}\n${body}\n</body></html>`;
+    `<style>${cssSrc}</style>${bootstrap}</head><body>\n${htmlSrc}\n${userBody}\n</body></html>`;
 }
+
+// ---------- console drawer ----------
+
+let consoleCount = 0;
+const CONSOLE_MAX = 200;
+
+function clearConsole(): void {
+  consoleCount = 0;
+  if (consoleLogEl) consoleLogEl.innerHTML = "";
+  if (consoleCountEl) consoleCountEl.textContent = "";
+}
+
+function appendConsole(level: string, text: string): void {
+  if (!consoleLogEl) return;
+  if (consoleCount >= CONSOLE_MAX) return;
+  consoleCount++;
+  const row = document.createElement("div");
+  row.className = "console-entry level-" + level;
+  row.textContent = text;
+  consoleLogEl.appendChild(row);
+  consoleLogEl.scrollTop = consoleLogEl.scrollHeight;
+  if (consoleCountEl) consoleCountEl.textContent = String(consoleCount);
+}
+
+window.addEventListener("message", (e: MessageEvent) => {
+  const d = e.data as PreviewMessage | undefined;
+  if (!d || d.source !== PREVIEW_SOURCE) return;
+  // Only trust the current preview frame, and only its current render.
+  if (previewFrame && e.source !== previewFrame.contentWindow) return;
+  if (d.nonce !== currentPreviewNonce) return;
+  appendConsole(d.level, (d.parts || []).join(" "));
+});
+
+document.getElementById("console-clear")?.addEventListener("click", clearConsole);
+document.getElementById("console-toggle")?.addEventListener("click", () => {
+  document.getElementById("console-drawer")?.classList.toggle("collapsed");
+});
 
 /** Route a run/render to the right engine based on the active tab kind. */
 function runActive(): void {
@@ -862,7 +937,7 @@ function syncViewToActiveTab(): void {
   const t = getActiveTab();
   const isPlay = t.kind === "playground";
   panelTabsEl?.classList.toggle("hidden", !isPlay);
-  previewFrame?.classList.toggle("hidden", !isPlay);
+  previewPane?.classList.toggle("hidden", !isPlay);
   resultsInner.classList.toggle("hidden", isPlay);
   renderPanelTabs();
 }

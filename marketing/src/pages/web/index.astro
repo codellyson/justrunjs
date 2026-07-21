@@ -160,12 +160,24 @@ import { EXAMPLE_CATEGORIES } from "../../web/examples";
             <line x1="3" y1="21" x2="10" y2="14" />
           </svg>
         </button>
-        <iframe
-          id="preview"
-          class="preview hidden"
-          title="Live preview"
-          sandbox="allow-scripts allow-modals allow-popups allow-forms"
-        ></iframe>
+        <div id="preview-pane" class="preview-pane hidden">
+          <iframe
+            id="preview"
+            class="preview"
+            title="Live preview"
+            sandbox="allow-scripts allow-modals allow-popups allow-forms"
+          ></iframe>
+          <div id="console-drawer" class="console-drawer">
+            <div id="console-head" class="console-head">
+              <button id="console-toggle" class="console-toggle" title="Collapse / expand console">
+                <span class="console-title">Console</span>
+                <span id="console-count" class="console-count"></span>
+              </button>
+              <button id="console-clear" class="console-clear" title="Clear console">Clear</button>
+            </div>
+            <div id="console-log" class="console-log"></div>
+          </div>
+        </div>
       </div>
     </main>
 
