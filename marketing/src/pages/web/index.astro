@@ -10,6 +10,7 @@
 import "../../styles/global.css";
 import "../../web/style.css";
 import { BUILT_IN_THEMES } from "../../lib/theme-plugins";
+import { EXAMPLE_CATEGORIES } from "../../web/examples";
 ---
 
 <!doctype html>
@@ -105,6 +106,21 @@ import { BUILT_IN_THEMES } from "../../lib/theme-plugins";
           <rect x="5" y="5" width="14" height="14" rx="1.5" />
         </svg>
       </button>
+      <button class="icon-btn" id="btn-examples" title="Examples & lessons">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 4h9a2 2 0 0 1 2 2v14a1 1 0 0 0-1-1H4z" />
+          <path d="M20 4h-3a2 2 0 0 0-2 2v14a1 1 0 0 1 1-1h4z" />
+        </svg>
+      </button>
+      <button class="icon-btn" id="btn-share" title="Share (copy link)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="18" cy="5" r="3" />
+          <circle cx="6" cy="12" r="3" />
+          <circle cx="18" cy="19" r="3" />
+          <line x1="8.6" y1="10.7" x2="15.4" y2="6.3" />
+          <line x1="8.6" y1="13.3" x2="15.4" y2="17.7" />
+        </svg>
+      </button>
       <div class="sidebar-spacer"></div>
       <div class="sidebar-status" id="sidebar-status" title="ready">
         <span class="status-dot" aria-hidden="true"></span>
@@ -145,6 +161,41 @@ import { BUILT_IN_THEMES } from "../../lib/theme-plugins";
         </button>
       </div>
     </main>
+
+    <div id="examples-popover" class="examples-popover hidden" role="dialog" aria-label="Examples and lessons">
+      <div class="examples-header">
+        <span class="examples-heading">Examples &amp; lessons</span>
+        <span class="examples-sub">Click one to open it in a new tab</span>
+      </div>
+      <div class="examples-scroll">
+        {
+          EXAMPLE_CATEGORIES.map((cat) => (
+            <div class="examples-group">
+              <div class="examples-group-title">{cat.name}</div>
+              {cat.examples.map((ex) => (
+                <button
+                  type="button"
+                  class="example-item"
+                  data-example-id={ex.id}
+                  data-example-lang={ex.language}
+                  data-example-name={ex.title}
+                >
+                  <span class="example-item-top">
+                    <span class="example-title">{ex.title}</span>
+                    <span class="example-lang">
+                      {ex.language === "typescript" ? "TS" : "JS"}
+                    </span>
+                  </span>
+                  <span class="example-blurb">{ex.blurb}</span>
+                </button>
+              ))}
+            </div>
+          ))
+        }
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
     <div id="settings-popover" class="settings-popover hidden" role="dialog" aria-label="Settings">
       <div class="settings-section">

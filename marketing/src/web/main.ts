@@ -9,6 +9,13 @@ import {
   indentUnit,
 } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
+import { findExample } from "./examples.ts";
+import {
+  decodeSharedBin,
+  encodeShareUrl,
+  clearShareHash,
+  type ShareLanguage,
+} from "./share.ts";
 
 interface LineResult {
   line: number;
@@ -724,6 +731,29 @@ function newTab(lang: LanguageId = "typescript", content = ""): void {
   activateTab(id);
 }
 
+/** Ensure a tab name is unique by suffixing " 2", " 3", … before the extension. */
+function uniqueTabName(name: string): string {
+  if (!tabs.some((t) => t.name === name)) return name;
+  const dot = name.lastIndexOf(".");
+  const base = dot === -1 ? name : name.slice(0, dot);
+  const ext = dot === -1 ? "" : name.slice(dot);
+  for (let n = 2; ; n++) {
+    const candidate = `${base} ${n}${ext}`;
+    if (!tabs.some((t) => t.name === candidate)) return candidate;
+  }
+}
+
+/** Open a named bin (from an example or a shared link) as a fresh active tab. */
+function openBinTab(
+  name: string,
+  lang: LanguageId,
+  content: string,
+): void {
+  const id = "t-" + Date.now();
+  tabs.push({ id, name: uniqueTabName(name), content, language: lang });
+  activateTab(id);
+}
+
 function closeTab(id: string): void {
   if (tabs.length <= 1) return;
   const idx = tabs.findIndex((t) => t.id === id);
@@ -824,6 +854,82 @@ function renderTabs(): void {
 }
 
 renderTabs();
+
+// ---------- toast ----------
+
+let toastTimer: number | undefined;
+function showToast(message: string): void {
+  const el = document.getElementById("toast");
+  if (!el) return;
+  el.textContent = message;
+  el.classList.remove("hidden");
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => el.classList.add("hidden"), 2200);
+}
+
+// ---------- examples library ----------
+
+const examplesBtn = document.getElementById("btn-examples");
+const examplesPopover = document.getElementById("examples-popover");
+
+if (examplesBtn && examplesPopover) {
+  examplesBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    examplesPopover.classList.toggle("hidden");
+  });
+  document.addEventListener("click", (e) => {
+    if (examplesPopover.classList.contains("hidden")) return;
+    const target = e.target as Node | null;
+    if (!target) return;
+    if (examplesPopover.contains(target) || examplesBtn.contains(target)) return;
+    examplesPopover.classList.add("hidden");
+  });
+
+  for (const item of examplesPopover.querySelectorAll<HTMLElement>(
+    ".example-item",
+  )) {
+    item.addEventListener("click", () => {
+      const id = item.dataset.exampleId;
+      const ex = id ? findExample(id) : undefined;
+      if (!ex) return;
+      const ext = ex.language === "typescript" ? "ts" : "js";
+      openBinTab(`${ex.id}.${ext}`, ex.language, ex.code);
+      examplesPopover.classList.add("hidden");
+    });
+  }
+}
+
+// ---------- share by URL ----------
+
+const shareBtn = document.getElementById("btn-share");
+if (shareBtn) {
+  shareBtn.addEventListener("click", async () => {
+    const active = getActiveTab();
+    active.content = editor.state.doc.toString();
+    const url = encodeShareUrl({
+      name: active.name,
+      language: active.language as ShareLanguage,
+      code: active.content,
+    });
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast("Share link copied to clipboard");
+    } catch {
+      // Clipboard can be blocked (insecure context / permissions) — fall back
+      // to putting the link in the address bar so it's still shareable.
+      history.replaceState(null, "", url);
+      showToast("Share link is in your address bar");
+    }
+  });
+}
+
+// Import a shared bin from the URL hash, if the page was opened via a link.
+(function importSharedBin(): void {
+  const shared = decodeSharedBin();
+  if (!shared) return;
+  openBinTab(shared.name, shared.language as LanguageId, shared.code);
+  clearShareHash();
+})();
 
 const SHOW_LINE_NUMBERS_KEY = "runjs.showLineNumbers";
 let showLineNumbers = readBool(SHOW_LINE_NUMBERS_KEY, true);
