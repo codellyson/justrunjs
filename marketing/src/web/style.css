@@ -35,6 +35,16 @@
   --success: 165 195 130;
   --warning: 230 195 115;
 
+  /* Language identity colours — absolute (constant across themes), so the
+   * editor chrome speaks the same vocabulary as syntax highlighting. Tuned to
+   * stay legible on both light and dark theme backgrounds. */
+  --lang-ts: 71 137 209; /* TypeScript blue */
+  --lang-js: 224 179 40; /* JavaScript gold */
+  --lang-html: 227 100 60; /* HTML orange */
+  --lang-css: 66 165 210; /* CSS cyan-blue */
+  --lang-npm: 203 72 71; /* npm red */
+  --lang-play: 149 123 246; /* Playground violet */
+
   --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo,
     Consolas, monospace;
   --font-sans: "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -98,85 +108,9 @@ body {
   overflow: hidden;
 }
 
-/* When the custom Tauri title bar is visible, reserve 32px at the top so
- * sidebar + main start below it. The hidden class on .titlebar gates this
- * — browser sessions don't get the title bar OR the padding. */
-body.has-titlebar {
-  grid-template-rows: 32px 1fr;
-  grid-template-columns: 48px 1fr;
-}
-body.has-titlebar #titlebar {
-  grid-column: 1 / -1;
-  grid-row: 1;
-}
-body.has-titlebar #sidebar {
-  grid-column: 1;
-  grid-row: 2;
-}
-body.has-titlebar main {
-  grid-column: 2;
-  grid-row: 2;
-}
-
-/* ---------- custom title bar (Tauri only) ---------- */
-
-.titlebar {
-  display: flex;
-  align-items: stretch;
-  justify-content: space-between;
-  background: rgb(var(--bg-secondary));
-  border-bottom: 1px solid rgb(var(--border));
-  user-select: none;
-  -webkit-user-select: none;
-  height: 32px;
-}
-.titlebar.hidden { display: none; }
-
-.titlebar-name {
-  display: flex;
-  align-items: center;
-  /* px-3 in justdb's tailwind = 12px, not 14. Same gap-2 inner spacing
-   * (handled by flex gap if we ever add a logo glyph in front). */
-  gap: 8px;
-  padding: 0 12px;
-  font-size: 12px;
-  font-weight: 500;
-  color: rgb(var(--text-secondary));
-  letter-spacing: 0.2px;
-  pointer-events: none;
-}
-
-.titlebar-controls { display: flex; }
-
-.titlebar-btn {
-  width: 44px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 0;
-  color: rgb(var(--text-secondary));
-  cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
-}
-.titlebar-btn:hover {
-  /* justdb: hover:bg-accent/10 hover:text-primary */
-  background: rgb(var(--accent) / 0.1);
-  color: rgb(var(--text-primary));
-}
-.titlebar-btn-danger:hover {
-  /* justdb: hover:bg-danger hover:text-white */
-  background: rgb(var(--danger));
-  color: #fff;
-}
-
-/* Maximize button swaps between the "maximize" square and the "restore"
- * stacked-squares icon. main.js toggles .is-maximized on .titlebar when
- * the window's state changes. */
-#btn-tb-max .icon-restore { display: none; }
-.titlebar.is-maximized #btn-tb-max .icon-max { display: none; }
-.titlebar.is-maximized #btn-tb-max .icon-restore { display: block; }
+/* The desktop app uses native OS window decorations, so there's no custom
+ * title bar or top-row grid reservation — the OS draws the title bar above
+ * the webview, and the sidebar + main fill the whole webview height. */
 
 /* ---------- sidebar ---------- */
 
@@ -217,8 +151,14 @@ body.has-titlebar main {
   transform: scale(0.94);
 }
 
-#btn-run:hover { color: rgb(var(--accent)); }
+/* Each action icon lights up in its own colour on hover so the toolbar reads
+ * as a set of distinct tools rather than one grey column. */
+#btn-run:hover { color: rgb(var(--success)); }
 #btn-stop:hover { color: rgb(var(--danger)); }
+#btn-examples:hover { color: rgb(var(--lang-play)); }
+#btn-share:hover { color: rgb(var(--lang-ts)); }
+#btn-settings:hover { color: rgb(var(--warning)); }
+#btn-home:hover { color: rgb(var(--accent)); }
 
 .sidebar-spacer {
   flex: 1 1 auto;
@@ -273,9 +213,9 @@ main {
   min-height: 0;
   height: 100%;
   overflow: hidden;
-  /* 32px tab bar on top, editor fills the rest. */
+  /* 40px file-tab bar, an auto panel-tab bar (0 when hidden), editor fills rest. */
   display: grid;
-  grid-template-rows: 32px 1fr;
+  grid-template-rows: 40px auto 1fr;
 }
 
 #editor-host {
@@ -421,19 +361,13 @@ main {
 }
 #tabs::-webkit-scrollbar { display: none; }
 
-/* macOS Tauri: the system traffic lights occupy the top-left ~80px (under
- * titleBarStyle: Overlay + decorations: true). main.js makes the tab bar
- * a drag region and adds this class so the first tab doesn't sit under
- * the traffic lights. The browser version doesn't get this padding. */
-body.titlebar-mac #tabs { padding-left: 80px; }
-
 .tab {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   height: 100%;
-  padding: 0 10px 0 12px;
-  font-size: 12px;
+  padding: 0 12px 0 14px;
+  font-size: 13.5px;
   color: rgb(var(--text-secondary));
   cursor: pointer;
   border-right: 1px solid rgb(var(--border));
@@ -451,36 +385,44 @@ body.titlebar-mac #tabs { padding-left: 80px; }
 }
 
 .tab .tab-lang {
-  font-size: 9px;
+  font-size: 10px;
+  font-weight: 600;
   letter-spacing: 0.5px;
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: rgb(var(--text-primary) / 0.07);
-  color: rgb(var(--text-muted));
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgb(var(--lang-color, var(--text-muted)) / 0.16);
+  color: rgb(var(--lang-color, var(--text-muted)));
   text-transform: uppercase;
   border: 0;
   cursor: pointer;
   font-family: var(--font-mono);
+  transition: background 0.12s ease;
 }
 
-.tab .tab-lang:hover {
-  background: rgb(var(--text-primary) / 0.14);
-  color: rgb(var(--text-primary));
+.tab .tab-lang:not(:disabled):hover {
+  background: rgb(var(--lang-color, var(--text-primary)) / 0.3);
 }
+
+/* Each badge inherits its language's colour via a local custom prop. */
+.lang-ts { --lang-color: var(--lang-ts); }
+.lang-js { --lang-color: var(--lang-js); }
+.lang-play { --lang-color: var(--lang-play); }
+.lang-html { --lang-color: var(--lang-html); }
+.lang-css { --lang-color: var(--lang-css); }
 
 .tab .tab-name {
   font-family: var(--font-mono);
 }
 
 .tab .tab-close {
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 3px;
+  border-radius: 4px;
   color: rgb(var(--text-muted));
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1;
   margin-left: 2px;
 }
@@ -496,10 +438,10 @@ body.titlebar-mac #tabs { padding-left: 80px; }
   color: rgb(var(--text-muted));
   height: 100%;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12.5px;
   font-family: var(--font-mono);
   line-height: 1;
-  padding: 0 10px;
+  padding: 0 11px;
   letter-spacing: 0.3px;
 }
 
@@ -508,9 +450,10 @@ body.titlebar-mac #tabs { padding-left: 80px; }
   background: rgb(var(--text-primary) / 0.03);
 }
 
-.tab-add.npm:hover {
-  color: #cb3837;
-}
+.tab-add.ts:hover { color: rgb(var(--lang-ts)); }
+.tab-add.js:hover { color: rgb(var(--lang-js)); }
+.tab-add.npm:hover { color: rgb(var(--lang-npm)); }
+.tab-add.play:hover { color: rgb(var(--lang-play)); }
 
 /* ---------- settings popover ---------- */
 
@@ -685,3 +628,284 @@ body.titlebar-mac #tabs { padding-left: 80px; }
 /* Line-numbers toggle. basicSetup hard-wires lineNumbers, so rather than
  * rebuilding the editor through a Compartment we just hide the gutter. */
 body.hide-line-numbers .cm-gutters { display: none; }
+
+/* Inline per-line values in the playground JS editor (RunJS-style). */
+.cm-inline-value {
+  color: rgb(var(--text-muted));
+  font-style: italic;
+  opacity: 0.85;
+  white-space: pre;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ---------- playground: HTML/CSS/JS sub-tabs ---------- */
+
+.panel-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px 8px 0;
+  background: rgb(var(--bg-secondary));
+  border-bottom: 1px solid rgb(var(--border));
+}
+
+.panel-tabs.hidden { display: none; }
+
+.panel-tab {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: rgb(var(--text-muted));
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 5px 12px 6px;
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+
+.panel-tab:hover { color: rgb(var(--text-primary)); }
+
+/* Active panel is tinted by its own language colour (set via .lang-* class). */
+.panel-tab.active {
+  color: rgb(var(--lang-color, var(--text-primary)));
+  border-bottom-color: rgb(var(--lang-color, var(--accent)));
+}
+
+/* ---------- playground: live preview + console drawer ---------- */
+
+.preview-pane {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  background: rgb(var(--bg));
+}
+
+.preview-pane.hidden { display: none; }
+
+#preview {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  background: #ffffff;
+}
+
+.console-drawer {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  height: 180px;
+  border-top: 1px solid rgb(var(--border));
+  background: rgb(var(--bg-secondary));
+  overflow: hidden;
+}
+
+.console-drawer.collapsed { height: auto; }
+.console-drawer.collapsed .console-log { display: none; }
+
+.console-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  padding: 0 8px 0 4px;
+  user-select: none;
+}
+
+.console-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  padding: 4px 8px;
+  color: rgb(var(--text-muted));
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.console-toggle:hover { color: rgb(var(--text-primary)); }
+
+.console-count {
+  font-size: 10px;
+  letter-spacing: 0;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: rgb(var(--border) / 0.6);
+  color: rgb(var(--text-secondary));
+}
+.console-count:empty { display: none; }
+
+.console-clear {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  color: rgb(var(--text-muted));
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+.console-clear:hover {
+  color: rgb(var(--text-primary));
+  background: rgb(var(--bg) / 0.5);
+}
+
+.console-log {
+  flex: 1 1 auto;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  padding: 2px 0 8px;
+}
+
+.console-entry {
+  padding: 2px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-bottom: 1px solid rgb(var(--border) / 0.35);
+  color: rgb(var(--text-primary));
+}
+.console-entry.level-warn { color: rgb(var(--warning)); }
+.console-entry.level-error { color: rgb(var(--danger)); }
+.console-entry.level-debug,
+.console-entry.level-info { color: rgb(var(--text-secondary)); }
+
+.console-empty {
+  padding: 8px 12px;
+  color: rgb(var(--text-muted));
+  font-size: 12px;
+}
+
+#results-inner.hidden { display: none; }
+
+/* ---------- examples library popover ---------- */
+
+.examples-popover {
+  position: fixed;
+  left: 56px;
+  top: 12px;
+  width: 320px;
+  max-height: calc(100vh - 24px);
+  display: flex;
+  flex-direction: column;
+  background: rgb(var(--bg-secondary));
+  border: 1px solid rgb(var(--border));
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 10;
+  color: rgb(var(--text-primary));
+  overflow: hidden;
+}
+
+.examples-popover.hidden { display: none; }
+
+.examples-header {
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid rgb(var(--border));
+}
+
+.examples-heading {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.examples-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgb(var(--text-muted));
+}
+
+.examples-scroll {
+  overflow-y: auto;
+  padding: 6px 0 8px;
+}
+
+.examples-group + .examples-group { margin-top: 2px; }
+
+.examples-group-title {
+  padding: 8px 14px 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgb(var(--text-muted));
+}
+
+.example-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 7px 14px;
+  cursor: pointer;
+  color: inherit;
+  transition: background 0.12s ease;
+}
+
+.example-item:hover { background: rgb(var(--accent) / 0.1); }
+
+.example-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.example-title {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.example-lang {
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: rgb(var(--lang-color, var(--text-muted)));
+  background: rgb(var(--lang-color, var(--border)) / 0.16);
+}
+
+.example-blurb {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: rgb(var(--text-muted));
+}
+
+/* ---------- toast ---------- */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  background: rgb(var(--bg-secondary));
+  border: 1px solid rgb(var(--border));
+  color: rgb(var(--text-primary));
+  font-size: 12.5px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 20;
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+
+.toast.hidden {
+  opacity: 0;
+  pointer-events: none;
+}

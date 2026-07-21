@@ -168,6 +168,96 @@ v + 1;
     }
 
     #[test]
+    fn set_timeout_resolves() {
+        // The bare V8 core has no deno_web; setTimeout is backed by op_sleep.
+        // This proves the whole chain: shim -> async op -> event loop -> await.
+        let src = "\
+const value = await new Promise((resolve) => setTimeout(() => resolve('done'), 10));
+value;
+";
+        let r = evaluate(src).unwrap();
+        assert_eq!(find(&r, 2), "'done'");
+    }
+
+    #[test]
+    fn text_encoder_decoder_roundtrip() {
+        let src = "\
+const enc = new TextEncoder();
+const bytes = enc.encode('hé');
+bytes.length;
+new TextDecoder().decode(bytes);
+";
+        let r = evaluate(src).unwrap();
+        // 'h' = 1 byte, 'é' (U+00E9) = 2 bytes → 3.
+        assert_eq!(find(&r, 3), "3");
+        assert_eq!(find(&r, 4), "'hé'");
+    }
+
+    #[test]
+    fn structured_clone_is_deep_and_independent() {
+        let src = "\
+const orig = { n: { b: [1, 2] }, m: new Map([['k', 7]]) };
+const copy = structuredClone(orig);
+copy.n.b[0] = 99;
+orig.n.b[0];
+copy.m.get('k');
+";
+        let r = evaluate(src).unwrap();
+        assert_eq!(find(&r, 4), "1"); // original untouched by the clone's mutation
+        assert_eq!(find(&r, 5), "7"); // Map deep-cloned
+    }
+
+    #[test]
+    fn set_interval_ticks_and_clears() {
+        // A short interval that clears itself after 3 ticks, well within budget.
+        let src = "\
+let count = 0;
+const id = setInterval(() => { count += 1; if (count >= 3) clearInterval(id); }, 5);
+await new Promise((r) => setTimeout(r, 300));
+count;
+";
+        let r = evaluate(src).unwrap();
+        assert_eq!(find(&r, 4), "3");
+    }
+
+    #[test]
+    fn infinite_loop_is_bounded_by_budget() {
+        // A synchronous infinite loop must be terminated by the watchdog thread
+        // (a same-thread timer never could) and return the budget note, not hang.
+        let r = evaluate("while (true) {}\n").unwrap();
+        assert!(
+            r.iter().any(|line| line.display.contains("stopped after")),
+            "expected a budget-cutoff note, got: {r:?}"
+        );
+    }
+
+    #[test]
+    fn blob_size_and_text() {
+        let src = "\
+const blob = new Blob(['Hello, ', 'world']);
+blob.size;
+await blob.text();
+";
+        let r = evaluate(src).unwrap();
+        assert_eq!(find(&r, 2), "12");
+        assert_eq!(find(&r, 3), "'Hello, world'");
+    }
+
+    // Network-dependent, so ignored by default. Run with:
+    //   cargo test -- --ignored fetch_reads_json
+    #[test]
+    #[ignore = "hits the network"]
+    fn fetch_reads_json() {
+        let src = "\
+const res = await fetch('https://jsonplaceholder.typicode.com/todos/1');
+const todo = await res.json();
+todo.id;
+";
+        let r = evaluate(src).unwrap();
+        assert_eq!(find(&r, 3), "1");
+    }
+
+    #[test]
     fn relative_typescript_import() {
         use std::io::Write;
 

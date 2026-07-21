@@ -14,13 +14,14 @@
       {
         "title": "justrunjs",
         "url": "/web/",
-        "width": 1100,
-        "height": 720,
-        "minWidth": 720,
-        "minHeight": 480,
+        "width": 1360,
+        "height": 860,
+        "minWidth": 800,
+        "minHeight": 560,
+        "center": true,
         "resizable": true,
         "fullscreen": false,
-        "decorations": false,
+        "decorations": true,
         "backgroundColor": "#1d1a17"
       }
     ],

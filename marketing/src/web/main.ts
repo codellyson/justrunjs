@@ -1,14 +1,43 @@
 import { basicSetup } from "codemirror";
-import { EditorState, Compartment, Prec, type Extension } from "@codemirror/state";
-import { EditorView, keymap } from "@codemirror/view";
+import {
+  EditorState,
+  Compartment,
+  Prec,
+  StateField,
+  StateEffect,
+  type Extension,
+} from "@codemirror/state";
+import {
+  EditorView,
+  keymap,
+  Decoration,
+  WidgetType,
+  type DecorationSet,
+} from "@codemirror/view";
 import { indentWithTab } from "@codemirror/commands";
 import { javascript } from "@codemirror/lang-javascript";
+import { html as htmlLang } from "@codemirror/lang-html";
+import { css as cssLang } from "@codemirror/lang-css";
 import {
   syntaxHighlighting,
   HighlightStyle,
   indentUnit,
 } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
+import { findExample } from "./examples.ts";
+import inspectorRaw from "./inspector.ts?raw";
+import {
+  PREVIEW_SOURCE,
+  buildBridge,
+  type PreviewMessage,
+} from "./preview-bootstrap.ts";
+import {
+  decodeSharedBin,
+  encodeShareUrl,
+  clearShareHash,
+  type ShareLanguage,
+  type SharedBin,
+} from "./share.ts";
 
 interface LineResult {
   line: number;
@@ -80,11 +109,24 @@ interface ThemeDefinition {
 
 type LanguageId = "typescript" | "javascript";
 
+type TabKind = "scratchpad" | "playground";
+type PanelId = "html" | "css" | "js";
+
 interface Tab {
   id: string;
   name: string;
+  /** Missing on legacy persisted tabs → normalized to "scratchpad" on load. */
+  kind: TabKind;
+  // Scratchpad fields (also the storage for legacy tabs).
   content: string;
   language: LanguageId;
+  // Playground fields.
+  html?: string;
+  css?: string;
+  js?: string;
+  jsLanguage?: LanguageId;
+  /** Which sub-panel the editor is currently showing for a playground tab. */
+  activePanel?: PanelId;
 }
 
 const STARTER = `// justrunjs in the browser — every top-level value shows up on the right.
@@ -108,8 +150,53 @@ import _ from "npm:lodash@4";
 _.chunk([1, 2, 3, 4, 5], 2);
 `;
 
+const PLAYGROUND_HTML = `<!-- Write HTML here — it renders live on the right. -->
+<h1>Hello, playground 👋</h1>
+<p>Edit HTML, CSS and JS in the tabs above.</p>
+<button id="go">Click me</button>
+`;
+
+const PLAYGROUND_CSS = `body {
+  font-family: system-ui, sans-serif;
+  padding: 24px;
+  color: #1a1a2e;
+}
+button {
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 6px;
+  background: #5b6cff;
+  color: white;
+  cursor: pointer;
+}
+`;
+
+const PLAYGROUND_JS = `console.log("Hello from the console 👋", { ready: true });
+
+const btn = document.getElementById("go");
+let count = 0;
+btn.addEventListener("click", () => {
+  count++;
+  console.log("clicked", count, "time" + (count === 1 ? "" : "s"));
+  btn.textContent = \`Clicked \${count}×\`;
+});
+`;
+
 let tabs: Tab[] = [];
 let activeId: string | null = null;
+
+/** Backfill fields missing on tabs persisted before playground support. */
+function normalizeTab(t: Tab): Tab {
+  if (!t.kind) t.kind = "scratchpad";
+  if (t.kind === "playground") {
+    t.html ??= "";
+    t.css ??= "";
+    t.js ??= "";
+    t.jsLanguage ??= "javascript";
+    t.activePanel ??= "html";
+  }
+  return t;
+}
 
 function loadTabs(): void {
   const raw = localStorage.getItem(TABS_KEY);
@@ -117,7 +204,7 @@ function loadTabs(): void {
     try {
       const parsed = JSON.parse(raw) as { tabs?: Tab[]; activeId?: string };
       if (Array.isArray(parsed.tabs) && parsed.tabs.length > 0) {
-        tabs = parsed.tabs;
+        tabs = parsed.tabs.map(normalizeTab);
         activeId = parsed.activeId || tabs[0].id;
       }
     } catch {
@@ -129,6 +216,7 @@ function loadTabs(): void {
       {
         id: "t-1",
         name: "untitled.ts",
+        kind: "scratchpad",
         content: STARTER,
         language: "typescript",
       },
@@ -142,9 +230,51 @@ function getActiveTab(): Tab {
   return tabs.find((t) => t.id === activeId) || tabs[0];
 }
 
-function persistTabs(): void {
+// --- editor "slot": the piece of a tab the single CodeMirror is showing now.
+// For a scratchpad that's `content`; for a playground it's the active panel.
+
+function panelOf(tab: Tab): PanelId {
+  return tab.activePanel ?? "html";
+}
+
+function slotContent(tab: Tab): string {
+  if (tab.kind !== "playground") return tab.content;
+  const p = panelOf(tab);
+  return (p === "html" ? tab.html : p === "css" ? tab.css : tab.js) ?? "";
+}
+
+function writeSlot(tab: Tab, value: string): void {
+  if (tab.kind !== "playground") {
+    tab.content = value;
+    return;
+  }
+  const p = panelOf(tab);
+  if (p === "html") tab.html = value;
+  else if (p === "css") tab.css = value;
+  else tab.js = value;
+}
+
+function slotLanguageExt(tab: Tab): Extension {
+  if (tab.kind !== "playground") return languageExt(tab.language);
+  const p = panelOf(tab);
+  if (p === "html") return htmlLang();
+  if (p === "css") return cssLang();
+  return javascript({ typescript: (tab.jsLanguage ?? "javascript") === "typescript" });
+}
+
+// TS IntelliSense (types, lint) only makes sense on JS/TS slots — never HTML/CSS.
+function slotUsesTs(tab: Tab): boolean {
+  return tab.kind !== "playground" || panelOf(tab) === "js";
+}
+
+/** Push the editor's current text back into the active tab's live slot. */
+function flushEditor(): void {
   const active = getActiveTab();
-  if (active) active.content = editor.state.doc.toString();
+  if (active) writeSlot(active, editor.state.doc.toString());
+}
+
+function persistTabs(): void {
+  flushEditor();
   localStorage.setItem(TABS_KEY, JSON.stringify({ tabs, activeId }));
 }
 
@@ -158,6 +288,16 @@ const resultsEl = document.getElementById("results") as HTMLElement;
 const resultsInner = document.createElement("div");
 resultsInner.id = "results-inner";
 resultsEl.appendChild(resultsInner);
+
+const previewFrame = document.getElementById(
+  "preview",
+) as HTMLIFrameElement | null;
+const previewPane = document.getElementById("preview-pane");
+const consoleLogEl = document.getElementById("console-log");
+const consoleCountEl = document.getElementById("console-count");
+
+const panelTabsEl = document.getElementById("panel-tabs");
+const PANELS: PanelId[] = ["html", "css", "js"];
 
 type StatusState = "ready" | "running" | "ok" | "error";
 const STATES: StatusState[] = ["ready", "running", "ok", "error"];
@@ -272,10 +412,18 @@ const tabSizeCompartment = new Compartment();
 const wordWrapCompartment = new Compartment();
 const tsCompartment = new Compartment();
 
+// The loaded TS IntelliSense extensions, applied to the compartment only while a
+// JS/TS slot is active (see slotUsesTs). Empty until ts-env finishes loading.
+let tsExtensions: Extension = [];
+function tsExtFor(tab: Tab): Extension {
+  return slotUsesTs(tab) ? tsExtensions : [];
+}
+
 const FONT_SIZE_KEY = "runjs.fontSize";
 const TAB_SIZE_KEY = "runjs.tabSize";
 const WORD_WRAP_KEY = "runjs.wordWrap";
 const AUTO_EVAL_KEY = "runjs.autoEval";
+const PLAYGROUND_INLINE_KEY = "runjs.playgroundInline";
 
 function readInt(key: string, fallback: number): number {
   const v = parseInt(localStorage.getItem(key) || "", 10);
@@ -291,6 +439,7 @@ let fontSize = readInt(FONT_SIZE_KEY, 14);
 let tabSize = readInt(TAB_SIZE_KEY, 2);
 let wordWrap = readBool(WORD_WRAP_KEY, true);
 let autoEval = readBool(AUTO_EVAL_KEY, true);
+let playgroundInline = readBool(PLAYGROUND_INLINE_KEY, true);
 
 document.documentElement.style.setProperty(
   "--editor-font-size",
@@ -303,11 +452,59 @@ function currentMode(): Mode {
     : "dark";
 }
 
+// --- inline value decorations (playground JS: RunJS-style `⇒ value` at line end) ---
+
+class InlineValueWidget extends WidgetType {
+  constructor(readonly text: string) {
+    super();
+  }
+  eq(other: InlineValueWidget): boolean {
+    return other.text === this.text;
+  }
+  toDOM(): HTMLElement {
+    const span = document.createElement("span");
+    span.className = "cm-inline-value";
+    const firstLine = this.text.split("\n")[0];
+    span.textContent =
+      "  ⇒ " + firstLine + (this.text.includes("\n") ? " …" : "");
+    return span;
+  }
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
+const setInlineValues = StateEffect.define<{ line: number; text: string }[]>();
+
+const inlineValuesField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(deco, tr) {
+    deco = deco.map(tr.changes);
+    for (const e of tr.effects) {
+      if (!e.is(setInlineValues)) continue;
+      const ranges = [];
+      for (const { line, text } of e.value) {
+        if (line < 1 || line > tr.state.doc.lines) continue;
+        const pos = tr.state.doc.line(line).to;
+        ranges.push(
+          Decoration.widget({
+            widget: new InlineValueWidget(text),
+            side: 1,
+          }).range(pos),
+        );
+      }
+      deco = Decoration.set(ranges, true);
+    }
+    return deco;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
 const _bootTab = getActiveTab();
 const editor = new EditorView({
   parent: document.getElementById("editor-host") as HTMLElement,
   state: EditorState.create({
-    doc: _bootTab.content,
+    doc: slotContent(_bootTab),
     extensions: [
       basicSetup,
       wordWrapCompartment.of(wordWrap ? EditorView.lineWrapping : []),
@@ -318,7 +515,7 @@ const editor = new EditorView({
         {
           key: "Mod-Enter",
           run: () => {
-            runEval();
+            runActive();
             return true;
           },
         },
@@ -330,7 +527,8 @@ const editor = new EditorView({
           },
         },
       ]),
-      languageCompartment.of(languageExt(_bootTab.language)),
+      languageCompartment.of(slotLanguageExt(_bootTab)),
+      inlineValuesField,
       Prec.highest(tsCompartment.of([])),
       Prec.highest(highlightCompartment.of(highlightFor(currentMode()))),
       editorTheme,
@@ -561,21 +759,161 @@ function stopEval(): void {
   setStatus("stopped", "ready");
 }
 
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c] as string);
+}
+
+// Babel is heavy; keep it out of the initial bundle and load it the first time
+// a playground actually renders. Cached across renders after that.
+let transpileMod: typeof import("./transpile.ts") | null = null;
+
+// The inspector, transpiled to plain JS once, inlined into the preview so its
+// console output matches the scratchpad's fidelity (Map(1) {…} etc.).
+let inspectorJs: string | null = null;
+async function getInspectorJs(): Promise<string> {
+  if (inspectorJs !== null) return inspectorJs;
+  if (!transpileMod) transpileMod = await import("./transpile.ts");
+  inspectorJs = transpileMod.transpile(inspectorRaw, { instrument: false }).code;
+  return inspectorJs;
+}
+
+// Each render gets a fresh nonce; console/error messages tagged with a stale
+// nonce (from a previous srcdoc still unloading) are dropped by the listener.
+let previewNonce = 0;
+let currentPreviewNonce = "";
+
+const escapeScriptClose = (code: string): string =>
+  code.replace(/<\/script/gi, "<\\/script");
+
+/** Assemble the playground document and load it into the sandboxed iframe. */
+async function renderPreview(): Promise<void> {
+  const t = getActiveTab();
+  if (t.kind !== "playground" || !previewFrame) return;
+  flushEditor();
+  const { html: htmlSrc = "", css: cssSrc = "", js: jsSrc = "" } = t;
+
+  const instrument = playgroundInline;
+  let userBody: string;
+  try {
+    if (!transpileMod) transpileMod = await import("./transpile.ts");
+    const { code } = transpileMod.transpile(jsSrc, { instrument });
+    userBody = `<script type="module">\n${escapeScriptClose(code)}\n</script>`;
+    setStatus("rendered", "ok");
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    userBody = `<pre style="margin:16px;color:#b00020;font:13px ui-monospace,monospace;white-space:pre-wrap">${escapeHtml(msg)}</pre>`;
+    setStatus(msg, "error");
+  }
+
+  const inspector = await getInspectorJs();
+
+  // The active tab may have changed while Babel/JS loaded — don't clobber.
+  if (getActiveTab().id !== t.id) return;
+
+  const nonce = String(++previewNonce);
+  currentPreviewNonce = nonce;
+  clearConsole();
+  lastValues.clear();
+  applyInlineValues();
+
+  const bootstrap =
+    `<script type="module">\n${escapeScriptClose(inspector)}\n${escapeScriptClose(buildBridge(nonce, instrument))}\n</script>`;
+
+  previewFrame.srcdoc =
+    `<!doctype html><html><head><meta charset="utf-8">` +
+    `<style>${cssSrc}</style>${bootstrap}</head><body>\n${htmlSrc}\n${userBody}\n</body></html>`;
+}
+
+// ---------- inline values (playground JS) ----------
+
+// Values from the current render, keyed by source line. Painted into the JS
+// editor only while the JS panel of a playground is active and the setting is on.
+const lastValues = new Map<number, string>();
+
+function shouldShowInline(): boolean {
+  const t = getActiveTab();
+  return playgroundInline && t.kind === "playground" && panelOf(t) === "js";
+}
+
+/** Push the collected values (or nothing) into the editor's decoration field. */
+function applyInlineValues(): void {
+  const show = shouldShowInline();
+  const values = show
+    ? [...lastValues.entries()]
+        .filter(([, text]) => text !== "undefined")
+        .map(([line, text]) => ({ line, text }))
+    : [];
+  editor.dispatch({ effects: setInlineValues.of(values) });
+}
+
+// ---------- console drawer ----------
+
+let consoleCount = 0;
+const CONSOLE_MAX = 200;
+
+function clearConsole(): void {
+  consoleCount = 0;
+  if (consoleLogEl) consoleLogEl.innerHTML = "";
+  if (consoleCountEl) consoleCountEl.textContent = "";
+}
+
+function appendConsole(level: string, text: string): void {
+  if (!consoleLogEl) return;
+  if (consoleCount >= CONSOLE_MAX) return;
+  consoleCount++;
+  const row = document.createElement("div");
+  row.className = "console-entry level-" + level;
+  row.textContent = text;
+  consoleLogEl.appendChild(row);
+  consoleLogEl.scrollTop = consoleLogEl.scrollHeight;
+  if (consoleCountEl) consoleCountEl.textContent = String(consoleCount);
+}
+
+window.addEventListener("message", (e: MessageEvent) => {
+  const d = e.data as PreviewMessage | undefined;
+  if (!d || d.source !== PREVIEW_SOURCE) return;
+  // Only trust the current preview frame, and only its current render.
+  if (previewFrame && e.source !== previewFrame.contentWindow) return;
+  if (d.nonce !== currentPreviewNonce) return;
+  if (d.type === "value") {
+    if (typeof d.line === "number") {
+      lastValues.set(d.line, (d.parts || [])[0] ?? "");
+      if (shouldShowInline()) applyInlineValues();
+    }
+    return;
+  }
+  appendConsole(d.level, (d.parts || []).join(" "));
+});
+
+document.getElementById("console-clear")?.addEventListener("click", clearConsole);
+document.getElementById("console-toggle")?.addEventListener("click", () => {
+  document.getElementById("console-drawer")?.classList.toggle("collapsed");
+});
+
+/** Route a run/render to the right engine based on the active tab kind. */
+function runActive(): void {
+  if (getActiveTab().kind === "playground") void renderPreview();
+  else void runEval();
+}
+
 function schedule(): void {
   if (timer) clearTimeout(timer);
   if (!autoEval) return;
-  timer = setTimeout(runEval, 300);
+  timer = setTimeout(runActive, 300);
 }
 
-runEval();
+syncViewToActiveTab();
+runActive();
 
 (async () => {
   setStatus("loading IntelliSense…", "running");
   try {
     const { createTsEnv } = await import("./ts-env.ts");
     const { extensions } = await createTsEnv();
+    tsExtensions = extensions;
+    // Apply only if the current slot is JS/TS (not an HTML/CSS playground panel).
     editor.dispatch({
-      effects: tsCompartment.reconfigure(extensions),
+      effects: tsCompartment.reconfigure(tsExtFor(getActiveTab())),
     });
     setStatus("IntelliSense ready", "ok");
   } catch (e) {
@@ -590,7 +928,7 @@ document.getElementById("btn-run")!.addEventListener("click", () => {
     clearTimeout(timer);
     timer = null;
   }
-  runEval();
+  runActive();
 });
 
 document.getElementById("btn-stop")!.addEventListener("click", stopEval);
@@ -604,57 +942,9 @@ if (isEmbedded || tauriCore) {
   if (home) home.style.display = "none";
 }
 
-const isMac =
-  !!tauriCore && typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent);
-
-if (tauriCore && isMac) {
-  const tabsEl = document.getElementById("tabs");
-  if (tabsEl) {
-    tabsEl.setAttribute("data-tauri-drag-region", "");
-    document.body.classList.add("titlebar-mac");
-  }
-}
-
-if (tauriCore && !isMac) {
-  const titlebar = document.getElementById("titlebar");
-  if (titlebar) {
-    titlebar.classList.remove("hidden");
-    document.body.classList.add("has-titlebar");
-
-    const win = window.__TAURI__ && window.__TAURI__.window;
-    const withWindow = (method: "minimize" | "toggleMaximize" | "close"): void => {
-      if (!win || !win.getCurrentWindow) return;
-      try {
-        const w = win.getCurrentWindow();
-        const fn = w[method];
-        if (typeof fn === "function") fn.call(w);
-      } catch {
-        /* ignore */
-      }
-    };
-    const minBtn = document.getElementById("btn-tb-min");
-    const maxBtn = document.getElementById("btn-tb-max");
-    const closeBtn = document.getElementById("btn-tb-close");
-    if (minBtn) minBtn.addEventListener("click", () => withWindow("minimize"));
-    if (maxBtn) maxBtn.addEventListener("click", () => withWindow("toggleMaximize"));
-    if (closeBtn) closeBtn.addEventListener("click", () => withWindow("close"));
-
-    (async () => {
-      if (!win || !win.getCurrentWindow) return;
-      try {
-        const w = win.getCurrentWindow();
-        const refresh = async (): Promise<void> => {
-          const m = await w.isMaximized();
-          titlebar.classList.toggle("is-maximized", m);
-        };
-        await refresh();
-        await w.onResized(refresh);
-      } catch {
-        /* ignore */
-      }
-    })();
-  }
-}
+// The desktop app uses native OS window decorations (see tauri.conf.json), so
+// there's no custom title bar to wire up — the OS draws the title bar, traffic
+// lights / min-max-close, and handles window dragging.
 
 if (isEmbedded) {
   const expand = document.getElementById("btn-expand");
@@ -695,17 +985,38 @@ new MutationObserver(syncHighlight).observe(document.documentElement, {
 
 const tabsEl = document.getElementById("tabs");
 
+/** Load the active tab's current slot (content + language) into the editor. */
+function loadActiveIntoEditor(): void {
+  const t = getActiveTab();
+  editor.dispatch({
+    changes: { from: 0, to: editor.state.doc.length, insert: slotContent(t) },
+    effects: [
+      languageCompartment.reconfigure(slotLanguageExt(t)),
+      tsCompartment.reconfigure(tsExtFor(t)),
+    ],
+  });
+}
+
+/** Toggle the panel bar / preview vs. results pane to match the active tab. */
+function syncViewToActiveTab(): void {
+  const t = getActiveTab();
+  const isPlay = t.kind === "playground";
+  panelTabsEl?.classList.toggle("hidden", !isPlay);
+  previewPane?.classList.toggle("hidden", !isPlay);
+  resultsInner.classList.toggle("hidden", isPlay);
+  renderPanelTabs();
+  // Values belong to whatever tab last rendered; drop them until this tab re-runs.
+  lastValues.clear();
+  applyInlineValues();
+}
+
 function activateTab(id: string): void {
   if (id === activeId) return;
-  const out = getActiveTab();
-  if (out) out.content = editor.state.doc.toString();
+  flushEditor();
   activeId = id;
-  const incoming = getActiveTab();
-  editor.dispatch({
-    changes: { from: 0, to: editor.state.doc.length, insert: incoming.content },
-    effects: languageCompartment.reconfigure(languageExt(incoming.language)),
-  });
+  loadActiveIntoEditor();
   renderTabs();
+  syncViewToActiveTab();
   persistTabs();
   schedule();
 }
@@ -720,7 +1031,68 @@ function nextUntitled(lang: LanguageId): string {
 
 function newTab(lang: LanguageId = "typescript", content = ""): void {
   const id = "t-" + Date.now();
-  tabs.push({ id, name: nextUntitled(lang), content, language: lang });
+  tabs.push({ id, name: nextUntitled(lang), kind: "scratchpad", content, language: lang });
+  activateTab(id);
+}
+
+function newPlayground(): void {
+  const id = "t-" + Date.now();
+  tabs.push({
+    id,
+    name: uniqueTabName("playground.html"),
+    kind: "playground",
+    content: "",
+    language: "javascript",
+    html: PLAYGROUND_HTML,
+    css: PLAYGROUND_CSS,
+    js: PLAYGROUND_JS,
+    jsLanguage: "javascript",
+    activePanel: "html",
+  });
+  activateTab(id);
+}
+
+/** Ensure a tab name is unique by suffixing " 2", " 3", … before the extension. */
+function uniqueTabName(name: string): string {
+  if (!tabs.some((t) => t.name === name)) return name;
+  const dot = name.lastIndexOf(".");
+  const base = dot === -1 ? name : name.slice(0, dot);
+  const ext = dot === -1 ? "" : name.slice(dot);
+  for (let n = 2; ; n++) {
+    const candidate = `${base} ${n}${ext}`;
+    if (!tabs.some((t) => t.name === candidate)) return candidate;
+  }
+}
+
+/** Open a named bin (from an example or a shared link) as a fresh active tab. */
+function openBinTab(
+  name: string,
+  lang: LanguageId,
+  content: string,
+): void {
+  const id = "t-" + Date.now();
+  tabs.push({ id, name: uniqueTabName(name), kind: "scratchpad", content, language: lang });
+  activateTab(id);
+}
+
+/** Open a playground bin (from an example or a shared link) as a fresh active tab. */
+function openPlaygroundTab(
+  name: string,
+  parts: { html: string; css: string; js: string; jsLanguage: LanguageId },
+): void {
+  const id = "t-" + Date.now();
+  tabs.push({
+    id,
+    name: uniqueTabName(name),
+    kind: "playground",
+    content: "",
+    language: "javascript",
+    html: parts.html,
+    css: parts.css,
+    js: parts.js,
+    jsLanguage: parts.jsLanguage,
+    activePanel: "html",
+  });
   activateTab(id);
 }
 
@@ -731,15 +1103,8 @@ function closeTab(id: string): void {
   tabs.splice(idx, 1);
   if (activeId === id) {
     activeId = tabs[Math.max(0, idx - 1)].id;
-    const incoming = getActiveTab();
-    editor.dispatch({
-      changes: {
-        from: 0,
-        to: editor.state.doc.length,
-        insert: incoming.content,
-      },
-      effects: languageCompartment.reconfigure(languageExt(incoming.language)),
-    });
+    loadActiveIntoEditor();
+    syncViewToActiveTab();
     schedule();
   }
   renderTabs();
@@ -748,7 +1113,7 @@ function closeTab(id: string): void {
 
 function toggleTabLang(id: string): void {
   const t = tabs.find((tab) => tab.id === id);
-  if (!t) return;
+  if (!t || t.kind === "playground") return;
   t.language = t.language === "typescript" ? "javascript" : "typescript";
   const ext = t.language === "typescript" ? "ts" : "js";
   t.name = t.name.replace(/\.(ts|js)$/i, "." + ext);
@@ -762,6 +1127,37 @@ function toggleTabLang(id: string): void {
   persistTabs();
 }
 
+// --- playground sub-tab bar (HTML / CSS / JS) ---
+
+function renderPanelTabs(): void {
+  if (!panelTabsEl) return;
+  const t = getActiveTab();
+  panelTabsEl.innerHTML = "";
+  if (t.kind !== "playground") return;
+  const current = panelOf(t);
+  for (const p of PANELS) {
+    const btn = document.createElement("button");
+    btn.className =
+      "panel-tab lang-" + p + (p === current ? " active" : "");
+    btn.textContent = p;
+    btn.setAttribute("role", "tab");
+    btn.addEventListener("click", () => switchPanel(p));
+    panelTabsEl.appendChild(btn);
+  }
+}
+
+function switchPanel(p: PanelId): void {
+  const t = getActiveTab();
+  if (t.kind !== "playground" || panelOf(t) === p) return;
+  flushEditor();
+  t.activePanel = p;
+  loadActiveIntoEditor();
+  renderPanelTabs();
+  // Same tab/render — show its values when landing on JS, hide otherwise.
+  applyInlineValues();
+  persistTabs();
+}
+
 function renderTabs(): void {
   if (!tabsEl) return;
   tabsEl.innerHTML = "";
@@ -772,13 +1168,21 @@ function renderTabs(): void {
     el.setAttribute("role", "tab");
 
     const lang = document.createElement("button");
-    lang.className = "tab-lang";
-    lang.textContent = t.language === "typescript" ? "TS" : "JS";
-    lang.title = "Toggle language";
-    lang.addEventListener("click", (e) => {
-      e.stopPropagation();
-      toggleTabLang(t.id);
-    });
+    if (t.kind === "playground") {
+      lang.className = "tab-lang lang-play";
+      lang.textContent = "</>";
+      lang.title = "Playground (HTML/CSS/JS)";
+      lang.disabled = true;
+    } else {
+      lang.className =
+        "tab-lang " + (t.language === "typescript" ? "lang-ts" : "lang-js");
+      lang.textContent = t.language === "typescript" ? "TS" : "JS";
+      lang.title = "Toggle language";
+      lang.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleTabLang(t.id);
+      });
+    }
 
     const name = document.createElement("span");
     name.className = "tab-name";
@@ -802,14 +1206,14 @@ function renderTabs(): void {
   }
 
   const addTs = document.createElement("button");
-  addTs.className = "tab-add";
+  addTs.className = "tab-add ts";
   addTs.textContent = "+TS";
   addTs.title = "New TypeScript tab";
   addTs.addEventListener("click", () => newTab("typescript"));
   tabsEl.appendChild(addTs);
 
   const addJs = document.createElement("button");
-  addJs.className = "tab-add";
+  addJs.className = "tab-add js";
   addJs.textContent = "+JS";
   addJs.title = "New JavaScript tab";
   addJs.addEventListener("click", () => newTab("javascript"));
@@ -821,9 +1225,122 @@ function renderTabs(): void {
   addNpm.title = "New tab with an npm: import template";
   addNpm.addEventListener("click", () => newTab("typescript", NPM_TEMPLATE));
   tabsEl.appendChild(addNpm);
+
+  const addPlay = document.createElement("button");
+  addPlay.className = "tab-add play";
+  addPlay.textContent = "+Play";
+  addPlay.title = "New playground (HTML/CSS/JS with live preview)";
+  addPlay.addEventListener("click", () => newPlayground());
+  tabsEl.appendChild(addPlay);
 }
 
 renderTabs();
+
+// ---------- toast ----------
+
+let toastTimer: number | undefined;
+function showToast(message: string): void {
+  const el = document.getElementById("toast");
+  if (!el) return;
+  el.textContent = message;
+  el.classList.remove("hidden");
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => el.classList.add("hidden"), 2200);
+}
+
+// ---------- examples library ----------
+
+const examplesBtn = document.getElementById("btn-examples");
+const examplesPopover = document.getElementById("examples-popover");
+
+if (examplesBtn && examplesPopover) {
+  examplesBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    examplesPopover.classList.toggle("hidden");
+  });
+  document.addEventListener("click", (e) => {
+    if (examplesPopover.classList.contains("hidden")) return;
+    const target = e.target as Node | null;
+    if (!target) return;
+    if (examplesPopover.contains(target) || examplesBtn.contains(target)) return;
+    examplesPopover.classList.add("hidden");
+  });
+
+  for (const item of examplesPopover.querySelectorAll<HTMLElement>(
+    ".example-item",
+  )) {
+    item.addEventListener("click", () => {
+      const id = item.dataset.exampleId;
+      const ex = id ? findExample(id) : undefined;
+      if (!ex) return;
+      if (ex.kind === "playground") {
+        openPlaygroundTab(`${ex.id}.html`, {
+          html: ex.html,
+          css: ex.css,
+          js: ex.js,
+          jsLanguage: "javascript",
+        });
+      } else {
+        const ext = ex.language === "typescript" ? "ts" : "js";
+        openBinTab(`${ex.id}.${ext}`, ex.language, ex.code);
+      }
+      examplesPopover.classList.add("hidden");
+    });
+  }
+}
+
+// ---------- share by URL ----------
+
+const shareBtn = document.getElementById("btn-share");
+if (shareBtn) {
+  shareBtn.addEventListener("click", async () => {
+    flushEditor();
+    const active = getActiveTab();
+    const bin: SharedBin =
+      active.kind === "playground"
+        ? {
+            kind: "playground",
+            name: active.name,
+            html: active.html ?? "",
+            css: active.css ?? "",
+            js: active.js ?? "",
+            jsLanguage: (active.jsLanguage ?? "javascript") as ShareLanguage,
+          }
+        : {
+            kind: "scratchpad",
+            name: active.name,
+            language: active.language as ShareLanguage,
+            code: active.content,
+          };
+    const url = encodeShareUrl(bin);
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast("Share link copied to clipboard");
+    } catch {
+      // Clipboard can be blocked (insecure context / permissions) — fall back
+      // to putting the link in the address bar so it's still shareable.
+      history.replaceState(null, "", url);
+      showToast("Share link is in your address bar");
+    }
+  });
+}
+
+// Import a shared bin from the URL hash, if the page was opened via a link.
+(function importSharedBin(): void {
+  const shared = decodeSharedBin();
+  if (!shared) return;
+  if (shared.kind === "playground") {
+    openPlaygroundTab(shared.name, {
+      html: shared.html,
+      css: shared.css,
+      js: shared.js,
+      jsLanguage: shared.jsLanguage as LanguageId,
+    });
+  } else {
+    openBinTab(shared.name, shared.language as LanguageId, shared.code);
+  }
+  clearShareHash();
+})();
 
 const SHOW_LINE_NUMBERS_KEY = "runjs.showLineNumbers";
 let showLineNumbers = readBool(SHOW_LINE_NUMBERS_KEY, true);
@@ -975,6 +1492,18 @@ if (settingsBtn && popover) {
         clearTimeout(timer);
         timer = null;
       }
+    });
+  }
+
+  const inlineToggle = document.getElementById("opt-playground-inline") as HTMLInputElement | null;
+  if (inlineToggle) {
+    inlineToggle.checked = playgroundInline;
+    inlineToggle.addEventListener("change", () => {
+      playgroundInline = inlineToggle.checked;
+      localStorage.setItem(PLAYGROUND_INLINE_KEY, String(playgroundInline));
+      // Re-render so the instrumentation (and thus the values) match the setting.
+      if (getActiveTab().kind === "playground") runActive();
+      else applyInlineValues();
     });
   }
 }

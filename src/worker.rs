@@ -20,6 +20,7 @@
 //! whole worker every `RECYCLE_EVERY` runs to bound long-session memory.
 
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use anyhow::{anyhow, Result};
@@ -28,7 +29,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::instrument::transpile_and_instrument;
 use crate::loader::RunjsModuleLoader;
-use crate::runtime::{runjs_ext, CaptureStore, INSPECTOR_JS};
+use crate::runtime::{budget_note, runjs_ext, CaptureStore, EVAL_BUDGET_MS, INSPECTOR_JS};
 use crate::{group_by_line, LineResult};
 
 /// Recycle the runtime after this many evals to keep long sessions bounded.
@@ -173,9 +174,48 @@ async fn run_one(
     let mod_id = runtime
         .load_side_es_module_from_code(&specifier, instrumented)
         .await?;
+    // 5. Arm a watchdog on a SEPARATE OS thread. If the eval outruns the
+    //    budget, terminate the isolate from outside — this interrupts even a
+    //    synchronous infinite loop, which a same-thread tokio timer never could
+    //    (V8 would hog the thread and the timer would never get polled). The
+    //    channel lets a finished eval stand the watchdog down; `timed_out`
+    //    distinguishes a budget cutoff from a user-triggered Stop.
+    let handle = runtime.v8_isolate().thread_safe_handle();
+    let timed_out = Arc::new(AtomicBool::new(false));
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+    let timed_out_w = timed_out.clone();
+    let watchdog = std::thread::spawn(move || {
+        if let Err(std::sync::mpsc::RecvTimeoutError::Timeout) =
+            done_rx.recv_timeout(std::time::Duration::from_millis(EVAL_BUDGET_MS))
+        {
+            timed_out_w.store(true, Ordering::SeqCst);
+            handle.terminate_execution();
+        }
+    });
+
     let eval = runtime.mod_evaluate(mod_id);
-    runtime.run_event_loop(Default::default()).await?;
-    eval.await?;
+    let loop_result = runtime.run_event_loop(Default::default()).await;
+
+    // Eval settled (or was terminated) — release the watchdog.
+    let _ = done_tx.send(());
+    let _ = watchdog.join();
+
+    // Termination (budget cutoff or Stop) can surface from the event loop OR
+    // the module-eval promise; fold them together. Termination isn't an error —
+    // return the captures gathered so far. Everything else is a real failure.
+    let outcome = match loop_result {
+        Ok(()) => eval.await,
+        Err(e) => Err(e),
+    };
+    match outcome {
+        Ok(()) => {}
+        Err(e) if e.to_string().contains("execution terminated") => {
+            if timed_out.load(Ordering::SeqCst) {
+                store.borrow_mut().push((0, budget_note()));
+            }
+        }
+        Err(e) => return Err(e.into()),
+    }
 
     let captures = store.borrow();
     Ok(group_by_line(&captures))
