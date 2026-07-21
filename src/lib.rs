@@ -168,6 +168,32 @@ v + 1;
     }
 
     #[test]
+    fn set_timeout_resolves() {
+        // The bare V8 core has no deno_web; setTimeout is backed by op_sleep.
+        // This proves the whole chain: shim -> async op -> event loop -> await.
+        let src = "\
+const value = await new Promise((resolve) => setTimeout(() => resolve('done'), 10));
+value;
+";
+        let r = evaluate(src).unwrap();
+        assert_eq!(find(&r, 2), "'done'");
+    }
+
+    // Network-dependent, so ignored by default. Run with:
+    //   cargo test -- --ignored fetch_reads_json
+    #[test]
+    #[ignore = "hits the network"]
+    fn fetch_reads_json() {
+        let src = "\
+const res = await fetch('https://jsonplaceholder.typicode.com/todos/1');
+const todo = await res.json();
+todo.id;
+";
+        let r = evaluate(src).unwrap();
+        assert_eq!(find(&r, 3), "1");
+    }
+
+    #[test]
     fn relative_typescript_import() {
         use std::io::Write;
 

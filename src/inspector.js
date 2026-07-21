@@ -142,4 +142,90 @@
     };
   }
   ["log", "info", "warn", "error", "debug"].forEach(wrapConsole);
+
+  // Minimal timer support. The desktop core is a bare V8 isolate with no Web
+  // platform APIs, so setTimeout/clearTimeout are backed by an async Rust op
+  // (op_sleep) that really waits, then fires the callback — the eval's event
+  // loop drains once the timer resolves. setInterval is deliberately left out:
+  // an endless interval would keep the event loop alive forever and hang the
+  // scratchpad. (The browser playground has the real thing.)
+  (function () {
+    const pending = new Set();
+    let nextId = 1;
+
+    globalThis.setTimeout = function (cb, ms) {
+      const id = nextId++;
+      const args = Array.prototype.slice.call(arguments, 2);
+      pending.add(id);
+      let delay = Number(ms);
+      if (!isFinite(delay) || delay < 0) delay = 0;
+      Deno.core.ops.op_sleep(delay).then(function () {
+        if (!pending.has(id)) return; // cleared before it fired
+        pending.delete(id);
+        if (typeof cb === "function") cb.apply(null, args);
+      });
+      return id;
+    };
+
+    globalThis.clearTimeout = function (id) {
+      pending.delete(id);
+    };
+
+    globalThis.setInterval = function () {
+      throw new Error(
+        "setInterval isn't available in the desktop scratchpad (it would run " +
+          "forever). Use setTimeout, or the browser playground.",
+      );
+    };
+    globalThis.clearInterval = function () {};
+  })();
+
+  // Minimal fetch. The bare core has no deno_fetch, so this is backed by the
+  // reqwest op op_fetch. It buffers the whole response body (no streaming) and
+  // exposes just enough of the Response interface for a scratchpad: status,
+  // ok, headers.get(), text(), json().
+  globalThis.fetch = function (input, init) {
+    init = init || {};
+    const url =
+      typeof input === "string" ? input : (input && input.url) || String(input);
+    const method = init.method || "GET";
+    const headers = [];
+    if (init.headers) {
+      if (Array.isArray(init.headers)) {
+        for (let i = 0; i < init.headers.length; i++) headers.push(init.headers[i]);
+      } else if (typeof init.headers.forEach === "function") {
+        init.headers.forEach(function (v, k) {
+          headers.push([k, String(v)]);
+        });
+      } else {
+        for (const k in init.headers) headers.push([k, String(init.headers[k])]);
+      }
+    }
+    const body = init.body != null ? String(init.body) : "";
+    return Deno.core.ops
+      .op_fetch(String(url), String(method), headers, body)
+      .then(function (resp) {
+        const hmap = {};
+        resp.headers.forEach(function (pair) {
+          hmap[String(pair[0]).toLowerCase()] = pair[1];
+        });
+        return {
+          status: resp.status,
+          statusText: resp.status_text,
+          ok: resp.ok,
+          url: String(url),
+          headers: {
+            get: function (name) {
+              return hmap[String(name).toLowerCase()] || null;
+            },
+          },
+          text: function () {
+            return Promise.resolve(resp.body);
+          },
+          json: function () {
+            return Promise.resolve(JSON.parse(resp.body));
+          },
+        };
+      });
+  };
 })();
