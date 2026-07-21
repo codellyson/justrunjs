@@ -35,6 +35,16 @@
   --success: 165 195 130;
   --warning: 230 195 115;
 
+  /* Language identity colours — absolute (constant across themes), so the
+   * editor chrome speaks the same vocabulary as syntax highlighting. Tuned to
+   * stay legible on both light and dark theme backgrounds. */
+  --lang-ts: 71 137 209; /* TypeScript blue */
+  --lang-js: 224 179 40; /* JavaScript gold */
+  --lang-html: 227 100 60; /* HTML orange */
+  --lang-css: 66 165 210; /* CSS cyan-blue */
+  --lang-npm: 203 72 71; /* npm red */
+  --lang-play: 149 123 246; /* Playground violet */
+
   --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo,
     Consolas, monospace;
   --font-sans: "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -217,8 +227,14 @@ body.has-titlebar main {
   transform: scale(0.94);
 }
 
-#btn-run:hover { color: rgb(var(--accent)); }
+/* Each action icon lights up in its own colour on hover so the toolbar reads
+ * as a set of distinct tools rather than one grey column. */
+#btn-run:hover { color: rgb(var(--success)); }
 #btn-stop:hover { color: rgb(var(--danger)); }
+#btn-examples:hover { color: rgb(var(--lang-play)); }
+#btn-share:hover { color: rgb(var(--lang-ts)); }
+#btn-settings:hover { color: rgb(var(--warning)); }
+#btn-home:hover { color: rgb(var(--accent)); }
 
 .sidebar-spacer {
   flex: 1 1 auto;
@@ -452,21 +468,29 @@ body.titlebar-mac #tabs { padding-left: 80px; }
 
 .tab .tab-lang {
   font-size: 9px;
+  font-weight: 600;
   letter-spacing: 0.5px;
   padding: 1px 5px;
   border-radius: 3px;
-  background: rgb(var(--text-primary) / 0.07);
-  color: rgb(var(--text-muted));
+  background: rgb(var(--lang-color, var(--text-muted)) / 0.16);
+  color: rgb(var(--lang-color, var(--text-muted)));
   text-transform: uppercase;
   border: 0;
   cursor: pointer;
   font-family: var(--font-mono);
+  transition: background 0.12s ease;
 }
 
-.tab .tab-lang:hover {
-  background: rgb(var(--text-primary) / 0.14);
-  color: rgb(var(--text-primary));
+.tab .tab-lang:not(:disabled):hover {
+  background: rgb(var(--lang-color, var(--text-primary)) / 0.3);
 }
+
+/* Each badge inherits its language's colour via a local custom prop. */
+.lang-ts { --lang-color: var(--lang-ts); }
+.lang-js { --lang-color: var(--lang-js); }
+.lang-play { --lang-color: var(--lang-play); }
+.lang-html { --lang-color: var(--lang-html); }
+.lang-css { --lang-color: var(--lang-css); }
 
 .tab .tab-name {
   font-family: var(--font-mono);
@@ -508,9 +532,10 @@ body.titlebar-mac #tabs { padding-left: 80px; }
   background: rgb(var(--text-primary) / 0.03);
 }
 
-.tab-add.npm:hover {
-  color: #cb3837;
-}
+.tab-add.ts:hover { color: rgb(var(--lang-ts)); }
+.tab-add.js:hover { color: rgb(var(--lang-js)); }
+.tab-add.npm:hover { color: rgb(var(--lang-npm)); }
+.tab-add.play:hover { color: rgb(var(--lang-play)); }
 
 /* ---------- settings popover ---------- */
 
@@ -725,9 +750,10 @@ body.hide-line-numbers .cm-gutters { display: none; }
 
 .panel-tab:hover { color: rgb(var(--text-primary)); }
 
+/* Active panel is tinted by its own language colour (set via .lang-* class). */
 .panel-tab.active {
-  color: rgb(var(--text-primary));
-  border-bottom-color: rgb(var(--accent));
+  color: rgb(var(--lang-color, var(--text-primary)));
+  border-bottom-color: rgb(var(--lang-color, var(--accent)));
 }
 
 /* ---------- playground: live preview + console drawer ---------- */
@@ -930,8 +956,8 @@ body.hide-line-numbers .cm-gutters { display: none; }
   letter-spacing: 0.5px;
   padding: 1px 5px;
   border-radius: 4px;
-  color: rgb(var(--text-muted));
-  background: rgb(var(--border) / 0.5);
+  color: rgb(var(--lang-color, var(--text-muted)));
+  background: rgb(var(--lang-color, var(--border)) / 0.16);
 }
 
 .example-blurb {

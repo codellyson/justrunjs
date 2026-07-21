@@ -262,6 +262,11 @@ function slotLanguageExt(tab: Tab): Extension {
   return javascript({ typescript: (tab.jsLanguage ?? "javascript") === "typescript" });
 }
 
+// TS IntelliSense (types, lint) only makes sense on JS/TS slots — never HTML/CSS.
+function slotUsesTs(tab: Tab): boolean {
+  return tab.kind !== "playground" || panelOf(tab) === "js";
+}
+
 /** Push the editor's current text back into the active tab's live slot. */
 function flushEditor(): void {
   const active = getActiveTab();
@@ -406,6 +411,13 @@ const languageCompartment = new Compartment();
 const tabSizeCompartment = new Compartment();
 const wordWrapCompartment = new Compartment();
 const tsCompartment = new Compartment();
+
+// The loaded TS IntelliSense extensions, applied to the compartment only while a
+// JS/TS slot is active (see slotUsesTs). Empty until ts-env finishes loading.
+let tsExtensions: Extension = [];
+function tsExtFor(tab: Tab): Extension {
+  return slotUsesTs(tab) ? tsExtensions : [];
+}
 
 const FONT_SIZE_KEY = "runjs.fontSize";
 const TAB_SIZE_KEY = "runjs.tabSize";
@@ -898,8 +910,10 @@ runActive();
   try {
     const { createTsEnv } = await import("./ts-env.ts");
     const { extensions } = await createTsEnv();
+    tsExtensions = extensions;
+    // Apply only if the current slot is JS/TS (not an HTML/CSS playground panel).
     editor.dispatch({
-      effects: tsCompartment.reconfigure(extensions),
+      effects: tsCompartment.reconfigure(tsExtFor(getActiveTab())),
     });
     setStatus("IntelliSense ready", "ok");
   } catch (e) {
@@ -1024,7 +1038,10 @@ function loadActiveIntoEditor(): void {
   const t = getActiveTab();
   editor.dispatch({
     changes: { from: 0, to: editor.state.doc.length, insert: slotContent(t) },
-    effects: languageCompartment.reconfigure(slotLanguageExt(t)),
+    effects: [
+      languageCompartment.reconfigure(slotLanguageExt(t)),
+      tsCompartment.reconfigure(tsExtFor(t)),
+    ],
   });
 }
 
@@ -1168,7 +1185,8 @@ function renderPanelTabs(): void {
   const current = panelOf(t);
   for (const p of PANELS) {
     const btn = document.createElement("button");
-    btn.className = "panel-tab" + (p === current ? " active" : "");
+    btn.className =
+      "panel-tab lang-" + p + (p === current ? " active" : "");
     btn.textContent = p;
     btn.setAttribute("role", "tab");
     btn.addEventListener("click", () => switchPanel(p));
@@ -1198,12 +1216,14 @@ function renderTabs(): void {
     el.setAttribute("role", "tab");
 
     const lang = document.createElement("button");
-    lang.className = "tab-lang";
     if (t.kind === "playground") {
+      lang.className = "tab-lang lang-play";
       lang.textContent = "</>";
       lang.title = "Playground (HTML/CSS/JS)";
       lang.disabled = true;
     } else {
+      lang.className =
+        "tab-lang " + (t.language === "typescript" ? "lang-ts" : "lang-js");
       lang.textContent = t.language === "typescript" ? "TS" : "JS";
       lang.title = "Toggle language";
       lang.addEventListener("click", (e) => {
@@ -1234,14 +1254,14 @@ function renderTabs(): void {
   }
 
   const addTs = document.createElement("button");
-  addTs.className = "tab-add";
+  addTs.className = "tab-add ts";
   addTs.textContent = "+TS";
   addTs.title = "New TypeScript tab";
   addTs.addEventListener("click", () => newTab("typescript"));
   tabsEl.appendChild(addTs);
 
   const addJs = document.createElement("button");
-  addJs.className = "tab-add";
+  addJs.className = "tab-add js";
   addJs.textContent = "+JS";
   addJs.title = "New JavaScript tab";
   addJs.addEventListener("click", () => newTab("javascript"));

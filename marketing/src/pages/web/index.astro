@@ -200,7 +200,16 @@ import { EXAMPLE_CATEGORIES } from "../../web/examples";
                 >
                   <span class="example-item-top">
                     <span class="example-title">{ex.title}</span>
-                    <span class="example-lang">
+                    <span
+                      class:list={[
+                        "example-lang",
+                        ex.kind === "playground"
+                          ? "lang-play"
+                          : ex.language === "typescript"
+                            ? "lang-ts"
+                            : "lang-js",
+                      ]}
+                    >
                       {ex.kind === "playground"
                         ? "</>"
                         : ex.language === "typescript"
