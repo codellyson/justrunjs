@@ -15,16 +15,43 @@ export interface PreviewMessage {
   source: typeof PREVIEW_SOURCE;
   /** Matches the render that produced this frame; stale frames are ignored. */
   nonce: string;
-  type: "console" | "error";
+  type: "console" | "error" | "value";
   level: PreviewLevel | "error";
   parts: string[];
+  /** For type "value": the 1-based source line the captured expression is on. */
+  line?: number;
 }
 
 /**
  * Build the bridge JS for one render. `nonce` stamps every message so the parent
  * can drop output from a previous srcdoc that's still unloading.
+ *
+ * When `captureValues` is true the frame also defines `__capture(line, value)`,
+ * which the instrumented user code calls for every top-level expression; it
+ * posts the formatted value back so the parent can paint it inline in the JS
+ * editor. `__capture` returns its value untouched so it's semantically inert.
  */
-export function buildBridge(nonce: string): string {
+export function buildBridge(nonce: string, captureValues: boolean): string {
+  const capture = captureValues
+    ? `
+globalThis.__capture = function (line, value) {
+  try {
+    parent.postMessage(
+      {
+        source: ${JSON.stringify(PREVIEW_SOURCE)},
+        nonce: __N,
+        type: "value",
+        level: "log",
+        line: line,
+        parts: [(function () { try { return __inspect(value); } catch (_) { return String(value); } })()],
+      },
+      "*",
+    );
+  } catch (_) {}
+  return value;
+};`
+    : "";
+
   return `
 const __N = ${JSON.stringify(nonce)};
 function __post(type, level, parts) {
@@ -34,7 +61,7 @@ function __post(type, level, parts) {
       "*",
     );
   } catch (_) {}
-}
+}${capture}
 for (const __m of ["log", "info", "warn", "error", "debug"]) {
   const __orig = console[__m] ? console[__m].bind(console) : function () {};
   console[__m] = function (...args) {

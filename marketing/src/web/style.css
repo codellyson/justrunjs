@@ -686,6 +686,16 @@ body.titlebar-mac #tabs { padding-left: 80px; }
  * rebuilding the editor through a Compartment we just hide the gutter. */
 body.hide-line-numbers .cm-gutters { display: none; }
 
+/* Inline per-line values in the playground JS editor (RunJS-style). */
+.cm-inline-value {
+  color: rgb(var(--text-muted));
+  font-style: italic;
+  opacity: 0.85;
+  white-space: pre;
+  pointer-events: none;
+  user-select: none;
+}
+
 /* ---------- playground: HTML/CSS/JS sub-tabs ---------- */
 
 .panel-tabs {

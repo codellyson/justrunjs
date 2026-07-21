@@ -1,6 +1,19 @@
 import { basicSetup } from "codemirror";
-import { EditorState, Compartment, Prec, type Extension } from "@codemirror/state";
-import { EditorView, keymap } from "@codemirror/view";
+import {
+  EditorState,
+  Compartment,
+  Prec,
+  StateField,
+  StateEffect,
+  type Extension,
+} from "@codemirror/state";
+import {
+  EditorView,
+  keymap,
+  Decoration,
+  WidgetType,
+  type DecorationSet,
+} from "@codemirror/view";
 import { indentWithTab } from "@codemirror/commands";
 import { javascript } from "@codemirror/lang-javascript";
 import { html as htmlLang } from "@codemirror/lang-html";
@@ -397,6 +410,7 @@ const FONT_SIZE_KEY = "runjs.fontSize";
 const TAB_SIZE_KEY = "runjs.tabSize";
 const WORD_WRAP_KEY = "runjs.wordWrap";
 const AUTO_EVAL_KEY = "runjs.autoEval";
+const PLAYGROUND_INLINE_KEY = "runjs.playgroundInline";
 
 function readInt(key: string, fallback: number): number {
   const v = parseInt(localStorage.getItem(key) || "", 10);
@@ -412,6 +426,7 @@ let fontSize = readInt(FONT_SIZE_KEY, 14);
 let tabSize = readInt(TAB_SIZE_KEY, 2);
 let wordWrap = readBool(WORD_WRAP_KEY, true);
 let autoEval = readBool(AUTO_EVAL_KEY, true);
+let playgroundInline = readBool(PLAYGROUND_INLINE_KEY, true);
 
 document.documentElement.style.setProperty(
   "--editor-font-size",
@@ -423,6 +438,54 @@ function currentMode(): Mode {
     ? "light"
     : "dark";
 }
+
+// --- inline value decorations (playground JS: RunJS-style `⇒ value` at line end) ---
+
+class InlineValueWidget extends WidgetType {
+  constructor(readonly text: string) {
+    super();
+  }
+  eq(other: InlineValueWidget): boolean {
+    return other.text === this.text;
+  }
+  toDOM(): HTMLElement {
+    const span = document.createElement("span");
+    span.className = "cm-inline-value";
+    const firstLine = this.text.split("\n")[0];
+    span.textContent =
+      "  ⇒ " + firstLine + (this.text.includes("\n") ? " …" : "");
+    return span;
+  }
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
+const setInlineValues = StateEffect.define<{ line: number; text: string }[]>();
+
+const inlineValuesField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(deco, tr) {
+    deco = deco.map(tr.changes);
+    for (const e of tr.effects) {
+      if (!e.is(setInlineValues)) continue;
+      const ranges = [];
+      for (const { line, text } of e.value) {
+        if (line < 1 || line > tr.state.doc.lines) continue;
+        const pos = tr.state.doc.line(line).to;
+        ranges.push(
+          Decoration.widget({
+            widget: new InlineValueWidget(text),
+            side: 1,
+          }).range(pos),
+        );
+      }
+      deco = Decoration.set(ranges, true);
+    }
+    return deco;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
 
 const _bootTab = getActiveTab();
 const editor = new EditorView({
@@ -452,6 +515,7 @@ const editor = new EditorView({
         },
       ]),
       languageCompartment.of(slotLanguageExt(_bootTab)),
+      inlineValuesField,
       Prec.highest(tsCompartment.of([])),
       Prec.highest(highlightCompartment.of(highlightFor(currentMode()))),
       editorTheme,
@@ -715,11 +779,11 @@ async function renderPreview(): Promise<void> {
   flushEditor();
   const { html: htmlSrc = "", css: cssSrc = "", js: jsSrc = "" } = t;
 
+  const instrument = playgroundInline;
   let userBody: string;
   try {
     if (!transpileMod) transpileMod = await import("./transpile.ts");
-    // Playground JS runs uninstrumented in 2b (inline values arrive in 2c).
-    const { code } = transpileMod.transpile(jsSrc, { instrument: false });
+    const { code } = transpileMod.transpile(jsSrc, { instrument });
     userBody = `<script type="module">\n${escapeScriptClose(code)}\n</script>`;
     setStatus("rendered", "ok");
   } catch (e) {
@@ -736,13 +800,37 @@ async function renderPreview(): Promise<void> {
   const nonce = String(++previewNonce);
   currentPreviewNonce = nonce;
   clearConsole();
+  lastValues.clear();
+  applyInlineValues();
 
   const bootstrap =
-    `<script type="module">\n${escapeScriptClose(inspector)}\n${escapeScriptClose(buildBridge(nonce))}\n</script>`;
+    `<script type="module">\n${escapeScriptClose(inspector)}\n${escapeScriptClose(buildBridge(nonce, instrument))}\n</script>`;
 
   previewFrame.srcdoc =
     `<!doctype html><html><head><meta charset="utf-8">` +
     `<style>${cssSrc}</style>${bootstrap}</head><body>\n${htmlSrc}\n${userBody}\n</body></html>`;
+}
+
+// ---------- inline values (playground JS) ----------
+
+// Values from the current render, keyed by source line. Painted into the JS
+// editor only while the JS panel of a playground is active and the setting is on.
+const lastValues = new Map<number, string>();
+
+function shouldShowInline(): boolean {
+  const t = getActiveTab();
+  return playgroundInline && t.kind === "playground" && panelOf(t) === "js";
+}
+
+/** Push the collected values (or nothing) into the editor's decoration field. */
+function applyInlineValues(): void {
+  const show = shouldShowInline();
+  const values = show
+    ? [...lastValues.entries()]
+        .filter(([, text]) => text !== "undefined")
+        .map(([line, text]) => ({ line, text }))
+    : [];
+  editor.dispatch({ effects: setInlineValues.of(values) });
 }
 
 // ---------- console drawer ----------
@@ -774,6 +862,13 @@ window.addEventListener("message", (e: MessageEvent) => {
   // Only trust the current preview frame, and only its current render.
   if (previewFrame && e.source !== previewFrame.contentWindow) return;
   if (d.nonce !== currentPreviewNonce) return;
+  if (d.type === "value") {
+    if (typeof d.line === "number") {
+      lastValues.set(d.line, (d.parts || [])[0] ?? "");
+      if (shouldShowInline()) applyInlineValues();
+    }
+    return;
+  }
   appendConsole(d.level, (d.parts || []).join(" "));
 });
 
@@ -940,6 +1035,9 @@ function syncViewToActiveTab(): void {
   previewPane?.classList.toggle("hidden", !isPlay);
   resultsInner.classList.toggle("hidden", isPlay);
   renderPanelTabs();
+  // Values belong to whatever tab last rendered; drop them until this tab re-runs.
+  lastValues.clear();
+  applyInlineValues();
 }
 
 function activateTab(id: string): void {
@@ -1063,6 +1161,8 @@ function switchPanel(p: PanelId): void {
   t.activePanel = p;
   loadActiveIntoEditor();
   renderPanelTabs();
+  // Same tab/render — show its values when landing on JS, hide otherwise.
+  applyInlineValues();
   persistTabs();
 }
 
@@ -1368,6 +1468,18 @@ if (settingsBtn && popover) {
         clearTimeout(timer);
         timer = null;
       }
+    });
+  }
+
+  const inlineToggle = document.getElementById("opt-playground-inline") as HTMLInputElement | null;
+  if (inlineToggle) {
+    inlineToggle.checked = playgroundInline;
+    inlineToggle.addEventListener("change", () => {
+      playgroundInline = inlineToggle.checked;
+      localStorage.setItem(PLAYGROUND_INLINE_KEY, String(playgroundInline));
+      // Re-render so the instrumentation (and thus the values) match the setting.
+      if (getActiveTab().kind === "playground") runActive();
+      else applyInlineValues();
     });
   }
 }
