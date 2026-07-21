@@ -171,13 +171,29 @@
       pending.delete(id);
     };
 
-    globalThis.setInterval = function () {
-      throw new Error(
-        "setInterval isn't available in the desktop scratchpad (it would run " +
-          "forever). Use setTimeout, or the browser playground.",
-      );
+    // setInterval reschedules over op_sleep. Safe now: the host caps every eval
+    // at a fixed budget and terminates the isolate, so an uncleared interval
+    // can't run forever (the ticks that fired before the cutoff still show).
+    globalThis.setInterval = function (cb, ms) {
+      const id = nextId++;
+      const args = Array.prototype.slice.call(arguments, 2);
+      pending.add(id);
+      let delay = Number(ms);
+      if (!isFinite(delay) || delay < 0) delay = 0;
+      function tick() {
+        if (!pending.has(id)) return;
+        Deno.core.ops.op_sleep(delay).then(function () {
+          if (!pending.has(id)) return; // cleared
+          if (typeof cb === "function") cb.apply(null, args);
+          tick();
+        });
+      }
+      tick();
+      return id;
     };
-    globalThis.clearInterval = function () {};
+    globalThis.clearInterval = function (id) {
+      pending.delete(id);
+    };
   })();
 
   // Web platform shims the bare core lacks (no deno_web): TextEncoder/Decoder,

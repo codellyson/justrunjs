@@ -208,6 +208,30 @@ copy.m.get('k');
     }
 
     #[test]
+    fn set_interval_ticks_and_clears() {
+        // A short interval that clears itself after 3 ticks, well within budget.
+        let src = "\
+let count = 0;
+const id = setInterval(() => { count += 1; if (count >= 3) clearInterval(id); }, 5);
+await new Promise((r) => setTimeout(r, 300));
+count;
+";
+        let r = evaluate(src).unwrap();
+        assert_eq!(find(&r, 4), "3");
+    }
+
+    #[test]
+    fn infinite_loop_is_bounded_by_budget() {
+        // A synchronous infinite loop must be terminated by the watchdog thread
+        // (a same-thread timer never could) and return the budget note, not hang.
+        let r = evaluate("while (true) {}\n").unwrap();
+        assert!(
+            r.iter().any(|line| line.display.contains("stopped after")),
+            "expected a budget-cutoff note, got: {r:?}"
+        );
+    }
+
+    #[test]
     fn blob_size_and_text() {
         let src = "\
 const blob = new Blob(['Hello, ', 'world']);

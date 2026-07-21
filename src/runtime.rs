@@ -9,6 +9,8 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use deno_core::{extension, op2, JsRuntime, OpState, RuntimeOptions};
@@ -18,6 +20,20 @@ use crate::loader::RunjsModuleLoader;
 
 /// Ordered list of `(line, formatted_value)` captured during execution.
 pub type CaptureStore = Rc<RefCell<Vec<(u32, String)>>>;
+
+/// Hard ceiling on how long a single eval may run before the isolate is
+/// terminated. Bounds runaway code — an endless `setInterval`, or a beginner's
+/// `while (true) {}` — instead of freezing the app. Whatever ran before the
+/// cutoff is still shown. Shared by the worker (`run_one`) and `execute`.
+pub(crate) const EVAL_BUDGET_MS: u64 = 2000;
+
+/// The line-0 note appended when an eval is cut off by the budget.
+pub(crate) fn budget_note() -> String {
+    format!(
+        "\u{23f1} stopped after {}s — code was still running (setInterval, or a long/infinite loop)",
+        EVAL_BUDGET_MS / 1000
+    )
+}
 
 #[op2(fast)]
 fn op_capture(state: &mut OpState, #[smi] line: u32, #[string] formatted: &str) {
@@ -105,7 +121,9 @@ pub async fn execute(code: String, store: CaptureStore) -> Result<()> {
         ..Default::default()
     });
 
-    // Make the capture store reachable from the op.
+    // Make the capture store reachable from the op. Keep a clone so we can
+    // still append the budget note after moving the original into op_state.
+    let store_ref = store.clone();
     runtime.op_state().borrow_mut().put::<CaptureStore>(store);
 
     // Install the inspector + __capture globals (classic script, sync).
@@ -117,9 +135,43 @@ pub async fn execute(code: String, store: CaptureStore) -> Result<()> {
     let mod_id = runtime
         .load_main_es_module_from_code(&specifier, code)
         .await?;
+
+    // Budget watchdog on a separate OS thread — terminates from outside so it
+    // can interrupt a synchronous infinite loop too. See worker::run_one.
+    let handle = runtime.v8_isolate().thread_safe_handle();
+    let timed_out = Arc::new(AtomicBool::new(false));
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+    let timed_out_w = timed_out.clone();
+    let watchdog = std::thread::spawn(move || {
+        if let Err(std::sync::mpsc::RecvTimeoutError::Timeout) =
+            done_rx.recv_timeout(std::time::Duration::from_millis(EVAL_BUDGET_MS))
+        {
+            timed_out_w.store(true, Ordering::SeqCst);
+            handle.terminate_execution();
+        }
+    });
+
     let eval = runtime.mod_evaluate(mod_id);
-    runtime.run_event_loop(Default::default()).await?;
-    eval.await?;
+    let loop_result = runtime.run_event_loop(Default::default()).await;
+    let _ = done_tx.send(());
+    let _ = watchdog.join();
+
+    // Termination can surface from the event loop OR the module-eval promise
+    // ("Uncaught (in promise) Error: execution terminated"); fold them together
+    // and treat termination as a soft cutoff (keep captures), not a failure.
+    let outcome = match loop_result {
+        Ok(()) => eval.await,
+        Err(e) => Err(e),
+    };
+    match outcome {
+        Ok(()) => {}
+        Err(e) if e.to_string().contains("execution terminated") => {
+            if timed_out.load(Ordering::SeqCst) {
+                store_ref.borrow_mut().push((0, budget_note()));
+            }
+        }
+        Err(e) => return Err(e.into()),
+    }
     Ok(())
 }
 
