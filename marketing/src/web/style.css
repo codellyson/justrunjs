@@ -213,9 +213,9 @@ main {
   min-height: 0;
   height: 100%;
   overflow: hidden;
-  /* 32px file-tab bar, an auto panel-tab bar (0 when hidden), editor fills rest. */
+  /* 40px file-tab bar, an auto panel-tab bar (0 when hidden), editor fills rest. */
   display: grid;
-  grid-template-rows: 32px auto 1fr;
+  grid-template-rows: 40px auto 1fr;
 }
 
 #editor-host {
@@ -364,10 +364,10 @@ main {
 .tab {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   height: 100%;
-  padding: 0 10px 0 12px;
-  font-size: 12px;
+  padding: 0 12px 0 14px;
+  font-size: 13.5px;
   color: rgb(var(--text-secondary));
   cursor: pointer;
   border-right: 1px solid rgb(var(--border));
@@ -385,11 +385,11 @@ main {
 }
 
 .tab .tab-lang {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.5px;
-  padding: 1px 5px;
-  border-radius: 3px;
+  padding: 2px 6px;
+  border-radius: 4px;
   background: rgb(var(--lang-color, var(--text-muted)) / 0.16);
   color: rgb(var(--lang-color, var(--text-muted)));
   text-transform: uppercase;
@@ -415,14 +415,14 @@ main {
 }
 
 .tab .tab-close {
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 3px;
+  border-radius: 4px;
   color: rgb(var(--text-muted));
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1;
   margin-left: 2px;
 }
@@ -438,10 +438,10 @@ main {
   color: rgb(var(--text-muted));
   height: 100%;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12.5px;
   font-family: var(--font-mono);
   line-height: 1;
-  padding: 0 10px;
+  padding: 0 11px;
   letter-spacing: 0.3px;
 }
 
