@@ -179,6 +179,46 @@ value;
         assert_eq!(find(&r, 2), "'done'");
     }
 
+    #[test]
+    fn text_encoder_decoder_roundtrip() {
+        let src = "\
+const enc = new TextEncoder();
+const bytes = enc.encode('hé');
+bytes.length;
+new TextDecoder().decode(bytes);
+";
+        let r = evaluate(src).unwrap();
+        // 'h' = 1 byte, 'é' (U+00E9) = 2 bytes → 3.
+        assert_eq!(find(&r, 3), "3");
+        assert_eq!(find(&r, 4), "'hé'");
+    }
+
+    #[test]
+    fn structured_clone_is_deep_and_independent() {
+        let src = "\
+const orig = { n: { b: [1, 2] }, m: new Map([['k', 7]]) };
+const copy = structuredClone(orig);
+copy.n.b[0] = 99;
+orig.n.b[0];
+copy.m.get('k');
+";
+        let r = evaluate(src).unwrap();
+        assert_eq!(find(&r, 4), "1"); // original untouched by the clone's mutation
+        assert_eq!(find(&r, 5), "7"); // Map deep-cloned
+    }
+
+    #[test]
+    fn blob_size_and_text() {
+        let src = "\
+const blob = new Blob(['Hello, ', 'world']);
+blob.size;
+await blob.text();
+";
+        let r = evaluate(src).unwrap();
+        assert_eq!(find(&r, 2), "12");
+        assert_eq!(find(&r, 3), "'Hello, world'");
+    }
+
     // Network-dependent, so ignored by default. Run with:
     //   cargo test -- --ignored fetch_reads_json
     #[test]

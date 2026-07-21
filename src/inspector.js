@@ -180,6 +180,209 @@
     globalThis.clearInterval = function () {};
   })();
 
+  // Web platform shims the bare core lacks (no deno_web): TextEncoder/Decoder,
+  // structuredClone, Blob. Pure JS over ECMAScript built-ins.
+  (function () {
+    function utf8Encode(str) {
+      const bytes = [];
+      for (let i = 0; i < str.length; i++) {
+        let code = str.charCodeAt(i);
+        if (code >= 0xd800 && code <= 0xdbff && i + 1 < str.length) {
+          const next = str.charCodeAt(i + 1);
+          if (next >= 0xdc00 && next <= 0xdfff) {
+            code = 0x10000 + ((code - 0xd800) << 10) + (next - 0xdc00);
+            i++;
+          }
+        }
+        if (code < 0x80) {
+          bytes.push(code);
+        } else if (code < 0x800) {
+          bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
+        } else if (code < 0x10000) {
+          bytes.push(
+            0xe0 | (code >> 12),
+            0x80 | ((code >> 6) & 0x3f),
+            0x80 | (code & 0x3f),
+          );
+        } else {
+          bytes.push(
+            0xf0 | (code >> 18),
+            0x80 | ((code >> 12) & 0x3f),
+            0x80 | ((code >> 6) & 0x3f),
+            0x80 | (code & 0x3f),
+          );
+        }
+      }
+      return new Uint8Array(bytes);
+    }
+
+    function toU8(input) {
+      if (input instanceof Uint8Array) return input;
+      if (input instanceof ArrayBuffer) return new Uint8Array(input);
+      if (ArrayBuffer.isView(input)) {
+        return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+      }
+      return new Uint8Array(0);
+    }
+
+    function utf8Decode(input) {
+      const arr = toU8(input);
+      let out = "";
+      let i = 0;
+      while (i < arr.length) {
+        const c = arr[i++];
+        if (c < 0x80) {
+          out += String.fromCharCode(c);
+        } else if (c < 0xe0) {
+          out += String.fromCharCode(((c & 0x1f) << 6) | (arr[i++] & 0x3f));
+        } else if (c < 0xf0) {
+          out += String.fromCharCode(
+            ((c & 0x0f) << 12) | ((arr[i++] & 0x3f) << 6) | (arr[i++] & 0x3f),
+          );
+        } else {
+          let cp =
+            ((c & 0x07) << 18) |
+            ((arr[i++] & 0x3f) << 12) |
+            ((arr[i++] & 0x3f) << 6) |
+            (arr[i++] & 0x3f);
+          cp -= 0x10000;
+          out += String.fromCharCode(0xd800 + (cp >> 10), 0xdc00 + (cp & 0x3ff));
+        }
+      }
+      return out;
+    }
+
+    class TextEncoder {
+      get encoding() {
+        return "utf-8";
+      }
+      encode(input) {
+        return utf8Encode(input === undefined ? "" : String(input));
+      }
+      encodeInto(source, dest) {
+        const encoded = utf8Encode(String(source));
+        const written = Math.min(encoded.length, dest.length);
+        dest.set(encoded.subarray(0, written));
+        return { read: source.length, written: written };
+      }
+    }
+
+    // utf-8 only (the common case); label is accepted but ignored.
+    class TextDecoder {
+      constructor(label) {
+        this._label = (label || "utf-8").toLowerCase();
+      }
+      get encoding() {
+        return "utf-8";
+      }
+      decode(input) {
+        return input === undefined ? "" : utf8Decode(input);
+      }
+    }
+
+    function structuredClone(value) {
+      const seen = new Map();
+      function clone(val) {
+        if (val === null || typeof val !== "object") {
+          if (typeof val === "function" || typeof val === "symbol") {
+            throw new Error(
+              "Failed to execute 'structuredClone': value could not be cloned.",
+            );
+          }
+          return val;
+        }
+        if (seen.has(val)) return seen.get(val);
+        if (val instanceof Date) return new Date(val.getTime());
+        if (val instanceof RegExp) return new RegExp(val.source, val.flags);
+        if (val instanceof ArrayBuffer) return val.slice(0);
+        if (ArrayBuffer.isView(val)) {
+          const buf = val.buffer.slice(0);
+          if (val instanceof DataView) {
+            return new DataView(buf, val.byteOffset, val.byteLength);
+          }
+          return new val.constructor(buf, val.byteOffset, val.length);
+        }
+        let out;
+        if (val instanceof Map) {
+          out = new Map();
+          seen.set(val, out);
+          val.forEach(function (v, k) {
+            out.set(clone(k), clone(v));
+          });
+          return out;
+        }
+        if (val instanceof Set) {
+          out = new Set();
+          seen.set(val, out);
+          val.forEach(function (v) {
+            out.add(clone(v));
+          });
+          return out;
+        }
+        if (Array.isArray(val)) {
+          out = new Array(val.length);
+          seen.set(val, out);
+          for (let i = 0; i < val.length; i++) out[i] = clone(val[i]);
+          return out;
+        }
+        out = {};
+        seen.set(val, out);
+        for (const k of Object.keys(val)) out[k] = clone(val[k]);
+        return out;
+      }
+      return clone(value);
+    }
+
+    class Blob {
+      constructor(parts, options) {
+        parts = parts || [];
+        options = options || {};
+        const chunks = [];
+        let size = 0;
+        for (const part of parts) {
+          let bytes;
+          if (typeof part === "string") bytes = utf8Encode(part);
+          else if (part instanceof Blob) bytes = part._bytes;
+          else if (part instanceof ArrayBuffer || ArrayBuffer.isView(part)) {
+            bytes = toU8(part);
+          } else bytes = utf8Encode(String(part));
+          chunks.push(bytes);
+          size += bytes.length;
+        }
+        const all = new Uint8Array(size);
+        let off = 0;
+        for (const c of chunks) {
+          all.set(c, off);
+          off += c.length;
+        }
+        this._bytes = all;
+        this.size = size;
+        this.type = String(options.type || "").toLowerCase();
+      }
+      text() {
+        return Promise.resolve(utf8Decode(this._bytes));
+      }
+      arrayBuffer() {
+        return Promise.resolve(this._bytes.slice().buffer);
+      }
+      slice(start, end, contentType) {
+        const sub = this._bytes.slice(
+          start || 0,
+          end === undefined ? this._bytes.length : end,
+        );
+        const out = new Blob([], { type: contentType || this.type });
+        out._bytes = sub;
+        out.size = sub.length;
+        return out;
+      }
+    }
+
+    globalThis.TextEncoder = TextEncoder;
+    globalThis.TextDecoder = TextDecoder;
+    globalThis.structuredClone = structuredClone;
+    globalThis.Blob = Blob;
+  })();
+
   // Minimal fetch. The bare core has no deno_fetch, so this is backed by the
   // reqwest op op_fetch. It buffers the whole response body (no streaming) and
   // exposes just enough of the Response interface for a scratchpad: status,
