@@ -942,57 +942,9 @@ if (isEmbedded || tauriCore) {
   if (home) home.style.display = "none";
 }
 
-const isMac =
-  !!tauriCore && typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent);
-
-if (tauriCore && isMac) {
-  const tabsEl = document.getElementById("tabs");
-  if (tabsEl) {
-    tabsEl.setAttribute("data-tauri-drag-region", "");
-    document.body.classList.add("titlebar-mac");
-  }
-}
-
-if (tauriCore && !isMac) {
-  const titlebar = document.getElementById("titlebar");
-  if (titlebar) {
-    titlebar.classList.remove("hidden");
-    document.body.classList.add("has-titlebar");
-
-    const win = window.__TAURI__ && window.__TAURI__.window;
-    const withWindow = (method: "minimize" | "toggleMaximize" | "close"): void => {
-      if (!win || !win.getCurrentWindow) return;
-      try {
-        const w = win.getCurrentWindow();
-        const fn = w[method];
-        if (typeof fn === "function") fn.call(w);
-      } catch {
-        /* ignore */
-      }
-    };
-    const minBtn = document.getElementById("btn-tb-min");
-    const maxBtn = document.getElementById("btn-tb-max");
-    const closeBtn = document.getElementById("btn-tb-close");
-    if (minBtn) minBtn.addEventListener("click", () => withWindow("minimize"));
-    if (maxBtn) maxBtn.addEventListener("click", () => withWindow("toggleMaximize"));
-    if (closeBtn) closeBtn.addEventListener("click", () => withWindow("close"));
-
-    (async () => {
-      if (!win || !win.getCurrentWindow) return;
-      try {
-        const w = win.getCurrentWindow();
-        const refresh = async (): Promise<void> => {
-          const m = await w.isMaximized();
-          titlebar.classList.toggle("is-maximized", m);
-        };
-        await refresh();
-        await w.onResized(refresh);
-      } catch {
-        /* ignore */
-      }
-    })();
-  }
-}
+// The desktop app uses native OS window decorations (see tauri.conf.json), so
+// there's no custom title bar to wire up — the OS draws the title bar, traffic
+// lights / min-max-close, and handles window dragging.
 
 if (isEmbedded) {
   const expand = document.getElementById("btn-expand");
