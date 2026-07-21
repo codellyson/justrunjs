@@ -210,27 +210,35 @@ entries carry `{ html, css, js }` and open as playground tabs.
 
 ## 8. Desktop (Tauri) parity
 
-The frontend is shared, so the UI ships to desktop automatically. Two things to
-verify/adjust in the shell:
-  - **CSP** in `tauri.conf.json` must allow the preview iframe to run inline
-    `<script>`/`<style>` in `srcdoc` and to `import` from `https://esm.sh`.
-    Likely needs `frame-src`, `script-src` and `connect-src` entries. Verify on
-    a real `cargo tauri dev` build.
-  - Confirm `postMessage` from a sandboxed `srcdoc` frame reaches the parent in
-    the WebView2 (Windows) / WKWebView (macOS) runtimes.
+The frontend is shared, so the UI ships to desktop automatically.
+
+  - **CSP — verified at config level (2d):** `tauri.conf.json` has
+    `app.security.csp = null`, so Tauri injects **no** Content-Security-Policy.
+    The webview therefore imposes no restriction on the preview iframe: inline
+    `<script>`/`<style>` in `srcdoc` run, `import` from `https://esm.sh`
+    resolves, and cross-origin `postMessage` from the sandboxed frame reaches the
+    parent. **No config change is needed.** ⚠️ Guard for later: if a CSP is ever
+    introduced (to lock down the app shell), it must add `frame-src`,
+    `script-src` (with the inline allowance the preview needs), `style-src`, and
+    `connect-src https://esm.sh` — or the playground preview will silently break.
+  - Runtime confirmation on WebView2 (Windows) / WKWebView (macOS) still wants a
+    real `cargo tauri dev` pass on each OS; the null-CSP analysis is sound but
+    the native window can't be driven from the browser test harness.
 
 ---
 
-## 9. Delivery slices
+## 9. Delivery slices — all shipped
 
-- **2a — Render loop.** Playground `Tab` kind, 3-panel editor switcher, iframe
-  `srcdoc` preview, shared `transpile.ts`. No console yet. Ship-able: you can
-  build a page and see it render.
-- **2b — Console + errors.** Bootstrap bridge, console drawer, run nonce guard.
-- **2c — Inline values.** `__capture` → `value` messages → JS gutter overlay +
-  settings toggle.
-- **2d — Share/save/examples.** Versioned `SharedBin`, playground example
-  category, desktop CSP verification.
+- ✅ **2a — Render loop.** Playground `Tab` kind, 3-panel editor switcher, iframe
+  `srcdoc` preview, shared `transpile.ts`.
+- ✅ **2b — Console + errors.** Bootstrap bridge, console drawer, run nonce guard.
+- ✅ **2c — Inline values.** `__capture` → `value` messages → JS line-end widgets
+  + settings toggle.
+- ✅ **2d — Share/save/examples.** Versioned `SharedBin` (scratchpad|playground),
+  playground example category, desktop CSP verified at config level (§8).
+
+Playground tabs auto-save through the existing localStorage tab serialization
+(they're just serialized `Tab` objects with `kind: "playground"`).
 
 ---
 

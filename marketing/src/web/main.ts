@@ -36,6 +36,7 @@ import {
   encodeShareUrl,
   clearShareHash,
   type ShareLanguage,
+  type SharedBin,
 } from "./share.ts";
 
 interface LineResult {
@@ -1105,6 +1106,27 @@ function openBinTab(
   activateTab(id);
 }
 
+/** Open a playground bin (from an example or a shared link) as a fresh active tab. */
+function openPlaygroundTab(
+  name: string,
+  parts: { html: string; css: string; js: string; jsLanguage: LanguageId },
+): void {
+  const id = "t-" + Date.now();
+  tabs.push({
+    id,
+    name: uniqueTabName(name),
+    kind: "playground",
+    content: "",
+    language: "javascript",
+    html: parts.html,
+    css: parts.css,
+    js: parts.js,
+    jsLanguage: parts.jsLanguage,
+    activePanel: "html",
+  });
+  activateTab(id);
+}
+
 function closeTab(id: string): void {
   if (tabs.length <= 1) return;
   const idx = tabs.findIndex((t) => t.id === id);
@@ -1279,8 +1301,17 @@ if (examplesBtn && examplesPopover) {
       const id = item.dataset.exampleId;
       const ex = id ? findExample(id) : undefined;
       if (!ex) return;
-      const ext = ex.language === "typescript" ? "ts" : "js";
-      openBinTab(`${ex.id}.${ext}`, ex.language, ex.code);
+      if (ex.kind === "playground") {
+        openPlaygroundTab(`${ex.id}.html`, {
+          html: ex.html,
+          css: ex.css,
+          js: ex.js,
+          jsLanguage: "javascript",
+        });
+      } else {
+        const ext = ex.language === "typescript" ? "ts" : "js";
+        openBinTab(`${ex.id}.${ext}`, ex.language, ex.code);
+      }
       examplesPopover.classList.add("hidden");
     });
   }
@@ -1291,13 +1322,25 @@ if (examplesBtn && examplesPopover) {
 const shareBtn = document.getElementById("btn-share");
 if (shareBtn) {
   shareBtn.addEventListener("click", async () => {
+    flushEditor();
     const active = getActiveTab();
-    active.content = editor.state.doc.toString();
-    const url = encodeShareUrl({
-      name: active.name,
-      language: active.language as ShareLanguage,
-      code: active.content,
-    });
+    const bin: SharedBin =
+      active.kind === "playground"
+        ? {
+            kind: "playground",
+            name: active.name,
+            html: active.html ?? "",
+            css: active.css ?? "",
+            js: active.js ?? "",
+            jsLanguage: (active.jsLanguage ?? "javascript") as ShareLanguage,
+          }
+        : {
+            kind: "scratchpad",
+            name: active.name,
+            language: active.language as ShareLanguage,
+            code: active.content,
+          };
+    const url = encodeShareUrl(bin);
     try {
       await navigator.clipboard.writeText(url);
       showToast("Share link copied to clipboard");
@@ -1314,7 +1357,16 @@ if (shareBtn) {
 (function importSharedBin(): void {
   const shared = decodeSharedBin();
   if (!shared) return;
-  openBinTab(shared.name, shared.language as LanguageId, shared.code);
+  if (shared.kind === "playground") {
+    openPlaygroundTab(shared.name, {
+      html: shared.html,
+      css: shared.css,
+      js: shared.js,
+      jsLanguage: shared.jsLanguage as LanguageId,
+    });
+  } else {
+    openBinTab(shared.name, shared.language as LanguageId, shared.code);
+  }
   clearShareHash();
 })();
 

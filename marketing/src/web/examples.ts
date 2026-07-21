@@ -10,16 +10,31 @@
 
 export type ExampleLanguage = "typescript" | "javascript";
 
-export interface Example {
+interface BaseExample {
   /** Stable id — used for the tab name and as a dedupe key. */
   id: string;
   /** Short human title shown in the library list. */
   title: string;
   /** One-line hint of what the learner will see. */
   blurb: string;
+}
+
+/** A single-file scratchpad snippet (opens as a scratchpad tab). */
+export interface ScratchpadExample extends BaseExample {
+  kind?: "scratchpad";
   language: ExampleLanguage;
   code: string;
 }
+
+/** An HTML/CSS/JS bundle (opens as a playground tab with live preview). */
+export interface PlaygroundExample extends BaseExample {
+  kind: "playground";
+  html: string;
+  css: string;
+  js: string;
+}
+
+export type Example = ScratchpadExample | PlaygroundExample;
 
 export interface ExampleCategory {
   /** Section heading in the library panel. */
@@ -261,6 +276,91 @@ const res = await fetch("https://jsonplaceholder.typicode.com/todos/1");
 const todo = await res.json();
 todo;
 todo.title;
+`,
+      },
+    ],
+  },
+  {
+    name: "Playground (HTML/CSS/JS)",
+    examples: [
+      {
+        id: "dom-list",
+        kind: "playground",
+        title: "Build a list from data",
+        blurb: "Render an array into the DOM",
+        html: `<h2>Fruit basket</h2>
+<ul id="list"></ul>
+`,
+        css: `body { font-family: system-ui, sans-serif; padding: 24px; color: #1a1a2e; }
+h2 { margin-top: 0; }
+li { padding: 4px 0; }
+`,
+        js: `const fruits = ["apple", "banana", "cherry"];
+const list = document.getElementById("list");
+
+for (const fruit of fruits) {
+  const li = document.createElement("li");
+  li.textContent = fruit;
+  list.appendChild(li);
+}
+`,
+      },
+      {
+        id: "css-animation",
+        kind: "playground",
+        title: "A CSS animation",
+        blurb: "Keyframes + a pulsing box",
+        html: `<div class="pulse"></div>
+<p>Pure CSS — no JS needed.</p>
+`,
+        css: `body {
+  display: grid;
+  place-items: center;
+  min-height: 90vh;
+  font-family: system-ui, sans-serif;
+  color: #444;
+}
+.pulse {
+  width: 80px;
+  height: 80px;
+  border-radius: 16px;
+  background: #5b6cff;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.6; }
+}
+`,
+        js: `// Nothing here — the animation is all CSS.
+`,
+      },
+      {
+        id: "canvas-ball",
+        kind: "playground",
+        title: "Bouncing ball (canvas)",
+        blurb: "requestAnimationFrame loop",
+        html: `<canvas id="c" width="320" height="200"></canvas>
+`,
+        css: `body { margin: 0; background: #0b1020; display: grid; place-items: center; min-height: 100vh; }
+canvas { background: #10162e; border-radius: 8px; }
+`,
+        js: `const ctx = document.getElementById("c").getContext("2d");
+let x = 40, y = 40, dx = 2.4, dy = 1.8;
+const r = 12;
+
+function frame() {
+  ctx.clearRect(0, 0, 320, 200);
+  x += dx; y += dy;
+  if (x < r || x > 320 - r) dx = -dx;
+  if (y < r || y > 200 - r) dy = -dy;
+  ctx.fillStyle = "#5b6cff";
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  requestAnimationFrame(frame);
+}
+frame();
 `,
       },
     ],

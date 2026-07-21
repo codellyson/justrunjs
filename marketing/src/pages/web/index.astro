@@ -196,13 +196,16 @@ import { EXAMPLE_CATEGORIES } from "../../web/examples";
                   type="button"
                   class="example-item"
                   data-example-id={ex.id}
-                  data-example-lang={ex.language}
                   data-example-name={ex.title}
                 >
                   <span class="example-item-top">
                     <span class="example-title">{ex.title}</span>
                     <span class="example-lang">
-                      {ex.language === "typescript" ? "TS" : "JS"}
+                      {ex.kind === "playground"
+                        ? "</>"
+                        : ex.language === "typescript"
+                          ? "TS"
+                          : "JS"}
                     </span>
                   </span>
                   <span class="example-blurb">{ex.blurb}</span>

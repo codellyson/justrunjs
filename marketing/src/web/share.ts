@@ -4,17 +4,33 @@
 // Encoding is deliberately simple and dependency-free: JSON -> UTF-8 ->
 // base64url. Snippets are small, so URL length isn't a concern at this stage;
 // a compression pass (CompressionStream) can slot in later behind the same API.
+//
+// The payload is versioned and discriminated by kind so scratchpad and
+// playground bins share one link format. Links minted before playground support
+// had no `k`/`v` and are decoded as scratchpads.
 
 export type ShareLanguage = "typescript" | "javascript";
 
-export interface SharedBin {
-  /** Tab name, e.g. "fibonacci.ts". */
+export interface SharedScratchpad {
+  kind: "scratchpad";
   name: string;
   language: ShareLanguage;
   code: string;
 }
 
+export interface SharedPlayground {
+  kind: "playground";
+  name: string;
+  html: string;
+  css: string;
+  js: string;
+  jsLanguage: ShareLanguage;
+}
+
+export type SharedBin = SharedScratchpad | SharedPlayground;
+
 const HASH_KEY = "bin";
+const VERSION = 1;
 
 // --- base64url over UTF-8 (btoa only handles latin1, so round-trip bytes) ---
 
@@ -33,13 +49,26 @@ function fromBase64Url(encoded: string): string {
   return new TextDecoder().decode(bytes);
 }
 
+function lang(v: unknown): ShareLanguage {
+  return v === "javascript" ? "javascript" : "typescript";
+}
+
 /** Build a shareable absolute URL for the given bin. */
 export function encodeShareUrl(bin: SharedBin): string {
-  const payload = toBase64Url(
-    JSON.stringify({ n: bin.name, l: bin.language, c: bin.code }),
-  );
+  const payload =
+    bin.kind === "playground"
+      ? {
+          v: VERSION,
+          k: "playground",
+          n: bin.name,
+          h: bin.html,
+          s: bin.css,
+          j: bin.js,
+          jl: bin.jsLanguage,
+        }
+      : { v: VERSION, k: "scratchpad", n: bin.name, l: bin.language, c: bin.code };
   const base = location.origin + location.pathname;
-  return `${base}#${HASH_KEY}=${payload}`;
+  return `${base}#${HASH_KEY}=${toBase64Url(JSON.stringify(payload))}`;
 }
 
 /**
@@ -49,25 +78,36 @@ export function encodeShareUrl(bin: SharedBin): string {
 export function decodeSharedBin(): SharedBin | null {
   const hash = location.hash.replace(/^#/, "");
   if (!hash) return null;
-  const params = new URLSearchParams(hash);
-  const payload = params.get(HASH_KEY);
+  const payload = new URLSearchParams(hash).get(HASH_KEY);
   if (!payload) return null;
   try {
-    const raw = JSON.parse(fromBase64Url(payload)) as {
-      n?: unknown;
-      l?: unknown;
-      c?: unknown;
-    };
+    const raw = JSON.parse(fromBase64Url(payload)) as Record<string, unknown>;
+
+    if (raw.k === "playground") {
+      return {
+        kind: "playground",
+        name: typeof raw.n === "string" && raw.n ? raw.n : "playground.html",
+        html: typeof raw.h === "string" ? raw.h : "",
+        css: typeof raw.s === "string" ? raw.s : "",
+        js: typeof raw.j === "string" ? raw.j : "",
+        jsLanguage: lang(raw.jl),
+      };
+    }
+
+    // Default / legacy: scratchpad (links shared before versioning had no k).
     if (typeof raw.c !== "string") return null;
-    const language: ShareLanguage =
-      raw.l === "javascript" ? "javascript" : "typescript";
-    const name =
-      typeof raw.n === "string" && raw.n
-        ? raw.n
-        : language === "typescript"
-          ? "shared.ts"
-          : "shared.js";
-    return { name, language, code: raw.c };
+    const language = lang(raw.l);
+    return {
+      kind: "scratchpad",
+      name:
+        typeof raw.n === "string" && raw.n
+          ? raw.n
+          : language === "typescript"
+            ? "shared.ts"
+            : "shared.js",
+      language,
+      code: raw.c,
+    };
   } catch {
     return null;
   }
