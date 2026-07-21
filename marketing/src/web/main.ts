@@ -3,6 +3,8 @@ import { EditorState, Compartment, Prec, type Extension } from "@codemirror/stat
 import { EditorView, keymap } from "@codemirror/view";
 import { indentWithTab } from "@codemirror/commands";
 import { javascript } from "@codemirror/lang-javascript";
+import { html as htmlLang } from "@codemirror/lang-html";
+import { css as cssLang } from "@codemirror/lang-css";
 import {
   syntaxHighlighting,
   HighlightStyle,
@@ -87,11 +89,24 @@ interface ThemeDefinition {
 
 type LanguageId = "typescript" | "javascript";
 
+type TabKind = "scratchpad" | "playground";
+type PanelId = "html" | "css" | "js";
+
 interface Tab {
   id: string;
   name: string;
+  /** Missing on legacy persisted tabs → normalized to "scratchpad" on load. */
+  kind: TabKind;
+  // Scratchpad fields (also the storage for legacy tabs).
   content: string;
   language: LanguageId;
+  // Playground fields.
+  html?: string;
+  css?: string;
+  js?: string;
+  jsLanguage?: LanguageId;
+  /** Which sub-panel the editor is currently showing for a playground tab. */
+  activePanel?: PanelId;
 }
 
 const STARTER = `// justrunjs in the browser — every top-level value shows up on the right.
@@ -115,8 +130,50 @@ import _ from "npm:lodash@4";
 _.chunk([1, 2, 3, 4, 5], 2);
 `;
 
+const PLAYGROUND_HTML = `<!-- Write HTML here — it renders live on the right. -->
+<h1>Hello, playground 👋</h1>
+<p>Edit HTML, CSS and JS in the tabs above.</p>
+<button id="go">Click me</button>
+`;
+
+const PLAYGROUND_CSS = `body {
+  font-family: system-ui, sans-serif;
+  padding: 24px;
+  color: #1a1a2e;
+}
+button {
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 6px;
+  background: #5b6cff;
+  color: white;
+  cursor: pointer;
+}
+`;
+
+const PLAYGROUND_JS = `const btn = document.getElementById("go");
+let count = 0;
+btn.addEventListener("click", () => {
+  count++;
+  btn.textContent = \`Clicked \${count}×\`;
+});
+`;
+
 let tabs: Tab[] = [];
 let activeId: string | null = null;
+
+/** Backfill fields missing on tabs persisted before playground support. */
+function normalizeTab(t: Tab): Tab {
+  if (!t.kind) t.kind = "scratchpad";
+  if (t.kind === "playground") {
+    t.html ??= "";
+    t.css ??= "";
+    t.js ??= "";
+    t.jsLanguage ??= "javascript";
+    t.activePanel ??= "html";
+  }
+  return t;
+}
 
 function loadTabs(): void {
   const raw = localStorage.getItem(TABS_KEY);
@@ -124,7 +181,7 @@ function loadTabs(): void {
     try {
       const parsed = JSON.parse(raw) as { tabs?: Tab[]; activeId?: string };
       if (Array.isArray(parsed.tabs) && parsed.tabs.length > 0) {
-        tabs = parsed.tabs;
+        tabs = parsed.tabs.map(normalizeTab);
         activeId = parsed.activeId || tabs[0].id;
       }
     } catch {
@@ -136,6 +193,7 @@ function loadTabs(): void {
       {
         id: "t-1",
         name: "untitled.ts",
+        kind: "scratchpad",
         content: STARTER,
         language: "typescript",
       },
@@ -149,9 +207,46 @@ function getActiveTab(): Tab {
   return tabs.find((t) => t.id === activeId) || tabs[0];
 }
 
-function persistTabs(): void {
+// --- editor "slot": the piece of a tab the single CodeMirror is showing now.
+// For a scratchpad that's `content`; for a playground it's the active panel.
+
+function panelOf(tab: Tab): PanelId {
+  return tab.activePanel ?? "html";
+}
+
+function slotContent(tab: Tab): string {
+  if (tab.kind !== "playground") return tab.content;
+  const p = panelOf(tab);
+  return (p === "html" ? tab.html : p === "css" ? tab.css : tab.js) ?? "";
+}
+
+function writeSlot(tab: Tab, value: string): void {
+  if (tab.kind !== "playground") {
+    tab.content = value;
+    return;
+  }
+  const p = panelOf(tab);
+  if (p === "html") tab.html = value;
+  else if (p === "css") tab.css = value;
+  else tab.js = value;
+}
+
+function slotLanguageExt(tab: Tab): Extension {
+  if (tab.kind !== "playground") return languageExt(tab.language);
+  const p = panelOf(tab);
+  if (p === "html") return htmlLang();
+  if (p === "css") return cssLang();
+  return javascript({ typescript: (tab.jsLanguage ?? "javascript") === "typescript" });
+}
+
+/** Push the editor's current text back into the active tab's live slot. */
+function flushEditor(): void {
   const active = getActiveTab();
-  if (active) active.content = editor.state.doc.toString();
+  if (active) writeSlot(active, editor.state.doc.toString());
+}
+
+function persistTabs(): void {
+  flushEditor();
   localStorage.setItem(TABS_KEY, JSON.stringify({ tabs, activeId }));
 }
 
@@ -165,6 +260,13 @@ const resultsEl = document.getElementById("results") as HTMLElement;
 const resultsInner = document.createElement("div");
 resultsInner.id = "results-inner";
 resultsEl.appendChild(resultsInner);
+
+const previewFrame = document.getElementById(
+  "preview",
+) as HTMLIFrameElement | null;
+
+const panelTabsEl = document.getElementById("panel-tabs");
+const PANELS: PanelId[] = ["html", "css", "js"];
 
 type StatusState = "ready" | "running" | "ok" | "error";
 const STATES: StatusState[] = ["ready", "running", "ok", "error"];
@@ -314,7 +416,7 @@ const _bootTab = getActiveTab();
 const editor = new EditorView({
   parent: document.getElementById("editor-host") as HTMLElement,
   state: EditorState.create({
-    doc: _bootTab.content,
+    doc: slotContent(_bootTab),
     extensions: [
       basicSetup,
       wordWrapCompartment.of(wordWrap ? EditorView.lineWrapping : []),
@@ -325,7 +427,7 @@ const editor = new EditorView({
         {
           key: "Mod-Enter",
           run: () => {
-            runEval();
+            runActive();
             return true;
           },
         },
@@ -337,7 +439,7 @@ const editor = new EditorView({
           },
         },
       ]),
-      languageCompartment.of(languageExt(_bootTab.language)),
+      languageCompartment.of(slotLanguageExt(_bootTab)),
       Prec.highest(tsCompartment.of([])),
       Prec.highest(highlightCompartment.of(highlightFor(currentMode()))),
       editorTheme,
@@ -568,13 +670,57 @@ function stopEval(): void {
   setStatus("stopped", "ready");
 }
 
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c] as string);
+}
+
+// Babel is heavy; keep it out of the initial bundle and load it the first time
+// a playground actually renders. Cached across renders after that.
+let transpileMod: typeof import("./transpile.ts") | null = null;
+
+/** Assemble the playground document and load it into the sandboxed iframe. */
+async function renderPreview(): Promise<void> {
+  const t = getActiveTab();
+  if (t.kind !== "playground" || !previewFrame) return;
+  flushEditor();
+  const { html: htmlSrc = "", css: cssSrc = "", js: jsSrc = "" } = t;
+
+  let body: string;
+  try {
+    if (!transpileMod) transpileMod = await import("./transpile.ts");
+    // Playground JS runs uninstrumented in 2a (inline values arrive in 2c).
+    const { code } = transpileMod.transpile(jsSrc, { instrument: false });
+    // Prevent a literal </script> in the transpiled output from closing the tag.
+    const safe = code.replace(/<\/script/gi, "<\\/script");
+    body = `<script type="module">\n${safe}\n</script>`;
+    setStatus("rendered", "ok");
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    body = `<pre style="margin:16px;color:#b00020;font:13px ui-monospace,monospace;white-space:pre-wrap">${escapeHtml(msg)}</pre>`;
+    setStatus(msg, "error");
+  }
+
+  // The active tab may have changed while Babel/JS loaded — don't clobber.
+  if (getActiveTab().id !== t.id) return;
+  previewFrame.srcdoc =
+    `<!doctype html><html><head><meta charset="utf-8">` +
+    `<style>${cssSrc}</style></head><body>\n${htmlSrc}\n${body}\n</body></html>`;
+}
+
+/** Route a run/render to the right engine based on the active tab kind. */
+function runActive(): void {
+  if (getActiveTab().kind === "playground") void renderPreview();
+  else void runEval();
+}
+
 function schedule(): void {
   if (timer) clearTimeout(timer);
   if (!autoEval) return;
-  timer = setTimeout(runEval, 300);
+  timer = setTimeout(runActive, 300);
 }
 
-runEval();
+syncViewToActiveTab();
+runActive();
 
 (async () => {
   setStatus("loading IntelliSense…", "running");
@@ -597,7 +743,7 @@ document.getElementById("btn-run")!.addEventListener("click", () => {
     clearTimeout(timer);
     timer = null;
   }
-  runEval();
+  runActive();
 });
 
 document.getElementById("btn-stop")!.addEventListener("click", stopEval);
@@ -702,17 +848,32 @@ new MutationObserver(syncHighlight).observe(document.documentElement, {
 
 const tabsEl = document.getElementById("tabs");
 
+/** Load the active tab's current slot (content + language) into the editor. */
+function loadActiveIntoEditor(): void {
+  const t = getActiveTab();
+  editor.dispatch({
+    changes: { from: 0, to: editor.state.doc.length, insert: slotContent(t) },
+    effects: languageCompartment.reconfigure(slotLanguageExt(t)),
+  });
+}
+
+/** Toggle the panel bar / preview vs. results pane to match the active tab. */
+function syncViewToActiveTab(): void {
+  const t = getActiveTab();
+  const isPlay = t.kind === "playground";
+  panelTabsEl?.classList.toggle("hidden", !isPlay);
+  previewFrame?.classList.toggle("hidden", !isPlay);
+  resultsInner.classList.toggle("hidden", isPlay);
+  renderPanelTabs();
+}
+
 function activateTab(id: string): void {
   if (id === activeId) return;
-  const out = getActiveTab();
-  if (out) out.content = editor.state.doc.toString();
+  flushEditor();
   activeId = id;
-  const incoming = getActiveTab();
-  editor.dispatch({
-    changes: { from: 0, to: editor.state.doc.length, insert: incoming.content },
-    effects: languageCompartment.reconfigure(languageExt(incoming.language)),
-  });
+  loadActiveIntoEditor();
   renderTabs();
+  syncViewToActiveTab();
   persistTabs();
   schedule();
 }
@@ -727,7 +888,24 @@ function nextUntitled(lang: LanguageId): string {
 
 function newTab(lang: LanguageId = "typescript", content = ""): void {
   const id = "t-" + Date.now();
-  tabs.push({ id, name: nextUntitled(lang), content, language: lang });
+  tabs.push({ id, name: nextUntitled(lang), kind: "scratchpad", content, language: lang });
+  activateTab(id);
+}
+
+function newPlayground(): void {
+  const id = "t-" + Date.now();
+  tabs.push({
+    id,
+    name: uniqueTabName("playground.html"),
+    kind: "playground",
+    content: "",
+    language: "javascript",
+    html: PLAYGROUND_HTML,
+    css: PLAYGROUND_CSS,
+    js: PLAYGROUND_JS,
+    jsLanguage: "javascript",
+    activePanel: "html",
+  });
   activateTab(id);
 }
 
@@ -750,7 +928,7 @@ function openBinTab(
   content: string,
 ): void {
   const id = "t-" + Date.now();
-  tabs.push({ id, name: uniqueTabName(name), content, language: lang });
+  tabs.push({ id, name: uniqueTabName(name), kind: "scratchpad", content, language: lang });
   activateTab(id);
 }
 
@@ -761,15 +939,8 @@ function closeTab(id: string): void {
   tabs.splice(idx, 1);
   if (activeId === id) {
     activeId = tabs[Math.max(0, idx - 1)].id;
-    const incoming = getActiveTab();
-    editor.dispatch({
-      changes: {
-        from: 0,
-        to: editor.state.doc.length,
-        insert: incoming.content,
-      },
-      effects: languageCompartment.reconfigure(languageExt(incoming.language)),
-    });
+    loadActiveIntoEditor();
+    syncViewToActiveTab();
     schedule();
   }
   renderTabs();
@@ -778,7 +949,7 @@ function closeTab(id: string): void {
 
 function toggleTabLang(id: string): void {
   const t = tabs.find((tab) => tab.id === id);
-  if (!t) return;
+  if (!t || t.kind === "playground") return;
   t.language = t.language === "typescript" ? "javascript" : "typescript";
   const ext = t.language === "typescript" ? "ts" : "js";
   t.name = t.name.replace(/\.(ts|js)$/i, "." + ext);
@@ -789,6 +960,34 @@ function toggleTabLang(id: string): void {
     schedule();
   }
   renderTabs();
+  persistTabs();
+}
+
+// --- playground sub-tab bar (HTML / CSS / JS) ---
+
+function renderPanelTabs(): void {
+  if (!panelTabsEl) return;
+  const t = getActiveTab();
+  panelTabsEl.innerHTML = "";
+  if (t.kind !== "playground") return;
+  const current = panelOf(t);
+  for (const p of PANELS) {
+    const btn = document.createElement("button");
+    btn.className = "panel-tab" + (p === current ? " active" : "");
+    btn.textContent = p;
+    btn.setAttribute("role", "tab");
+    btn.addEventListener("click", () => switchPanel(p));
+    panelTabsEl.appendChild(btn);
+  }
+}
+
+function switchPanel(p: PanelId): void {
+  const t = getActiveTab();
+  if (t.kind !== "playground" || panelOf(t) === p) return;
+  flushEditor();
+  t.activePanel = p;
+  loadActiveIntoEditor();
+  renderPanelTabs();
   persistTabs();
 }
 
@@ -803,12 +1002,18 @@ function renderTabs(): void {
 
     const lang = document.createElement("button");
     lang.className = "tab-lang";
-    lang.textContent = t.language === "typescript" ? "TS" : "JS";
-    lang.title = "Toggle language";
-    lang.addEventListener("click", (e) => {
-      e.stopPropagation();
-      toggleTabLang(t.id);
-    });
+    if (t.kind === "playground") {
+      lang.textContent = "</>";
+      lang.title = "Playground (HTML/CSS/JS)";
+      lang.disabled = true;
+    } else {
+      lang.textContent = t.language === "typescript" ? "TS" : "JS";
+      lang.title = "Toggle language";
+      lang.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleTabLang(t.id);
+      });
+    }
 
     const name = document.createElement("span");
     name.className = "tab-name";
@@ -851,6 +1056,13 @@ function renderTabs(): void {
   addNpm.title = "New tab with an npm: import template";
   addNpm.addEventListener("click", () => newTab("typescript", NPM_TEMPLATE));
   tabsEl.appendChild(addNpm);
+
+  const addPlay = document.createElement("button");
+  addPlay.className = "tab-add play";
+  addPlay.textContent = "+Play";
+  addPlay.title = "New playground (HTML/CSS/JS with live preview)";
+  addPlay.addEventListener("click", () => newPlayground());
+  tabsEl.appendChild(addPlay);
 }
 
 renderTabs();

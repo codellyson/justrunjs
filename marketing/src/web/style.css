@@ -273,9 +273,9 @@ main {
   min-height: 0;
   height: 100%;
   overflow: hidden;
-  /* 32px tab bar on top, editor fills the rest. */
+  /* 32px file-tab bar, an auto panel-tab bar (0 when hidden), editor fills rest. */
   display: grid;
-  grid-template-rows: 32px 1fr;
+  grid-template-rows: 32px auto 1fr;
 }
 
 #editor-host {
@@ -685,6 +685,56 @@ body.titlebar-mac #tabs { padding-left: 80px; }
 /* Line-numbers toggle. basicSetup hard-wires lineNumbers, so rather than
  * rebuilding the editor through a Compartment we just hide the gutter. */
 body.hide-line-numbers .cm-gutters { display: none; }
+
+/* ---------- playground: HTML/CSS/JS sub-tabs ---------- */
+
+.panel-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px 8px 0;
+  background: rgb(var(--bg-secondary));
+  border-bottom: 1px solid rgb(var(--border));
+}
+
+.panel-tabs.hidden { display: none; }
+
+.panel-tab {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: rgb(var(--text-muted));
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 5px 12px 6px;
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+
+.panel-tab:hover { color: rgb(var(--text-primary)); }
+
+.panel-tab.active {
+  color: rgb(var(--text-primary));
+  border-bottom-color: rgb(var(--accent));
+}
+
+/* ---------- playground: live preview iframe ---------- */
+
+#preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #ffffff;
+  z-index: 2;
+}
+
+#preview.hidden { display: none; }
+
+#results-inner.hidden { display: none; }
 
 /* ---------- examples library popover ---------- */
 
