@@ -95,9 +95,12 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          # tauri-action will: create a draft release on the first runner
+          # tauri-action will: create a DRAFT release on the first runner
           # (idempotently — subsequent runners attach to the same release),
-          # build the bundle, sign updater artifacts, upload everything.
+          # build the bundle, sign updater artifacts, upload everything. The
+          # draft is flipped to published by the `publish` job below, but only
+          # after every matrix platform has succeeded — so a release never goes
+          # public with some platforms' binaries missing.
           tagName: ${{ github.ref_name }}
           releaseName: "justrunjs ${{ github.ref_name }}"
           releaseBody: |
@@ -111,3 +114,24 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+  # Publish the draft only once ALL platform builds have succeeded, so the
+  # release becomes public atomically (never with a platform's assets missing).
+  # If any build leg fails, `needs: build` is unmet and this is skipped — the
+  # draft stays for inspection. Guarded to tag pushes (a workflow_dispatch run
+  # has no tagged release to publish).
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --draft=false \
+            --latest
