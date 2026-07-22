@@ -1,3 +1,8 @@
+// Release builds are a GUI (windows) subsystem app so Windows doesn't spawn a
+// console window alongside the app (closing that console would kill the app).
+// Dev builds keep the console for logs.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 //! Desktop shell: a Tauri window hosting CodeMirror with live inline results.
 //!
 //! All JS evaluation happens on a single long-lived V8 worker thread (see
