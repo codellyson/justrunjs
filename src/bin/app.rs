@@ -14,6 +14,7 @@
 use std::sync::OnceLock;
 
 use runjs_rs::{EvalWorker, LineResult};
+use tauri_plugin_updater::UpdaterExt;
 
 static WORKER: OnceLock<EvalWorker> = OnceLock::new();
 
@@ -36,11 +37,33 @@ fn main() {
     let _ = worker();
 
     tauri::Builder::default()
-        // Auto-update support: the plugin polls the `endpoints` listed in
-        // tauri.conf.json, downloads the new bundle if it's signed with the
-        // matching minisign pubkey, and prompts the user to restart. See
-        // DEPLOYMENT.md for how to issue + sign a release.
+        // Register the updater plugin (exposes the check/download API + the
+        // `updater:default` capability). It does NOT poll on its own — the
+        // check below is what actually looks for a new release.
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .setup(|app| {
+            // On launch, check the signed `latest.json` (endpoints in
+            // tauri.conf.json) for a newer build; if there is one, download +
+            // install it and restart into it. Best-effort: any error (offline,
+            // no update) is ignored so it never blocks startup.
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let updater = match handle.updater() {
+                    Ok(u) => u,
+                    Err(_) => return,
+                };
+                if let Ok(Some(update)) = updater.check().await {
+                    if update
+                        .download_and_install(|_, _| {}, || {})
+                        .await
+                        .is_ok()
+                    {
+                        handle.restart();
+                    }
+                }
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![evaluate_source, stop_eval])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
