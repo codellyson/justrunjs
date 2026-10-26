@@ -1,7 +1,7 @@
 // Lesson mode: record a tab with narration, and play recorded lessons back in the editor.
 // A learner's first edit to a playing lesson forks it into an ordinary tab (an "experiment"),
 // so experiments save, share and reopen like any other tab.
-import { Annotation, ChangeSet, Transaction, type AnnotationType } from "@codemirror/state";
+import { Annotation, ChangeSet, Transaction, type AnnotationType, type Text } from "@codemirror/state";
 import type { EditorView, ViewUpdate } from "@codemirror/view";
 import { checkpoints, seek, step, type Lesson, type LessonEvent, type ReplayState, type SlotId } from "./lesson.ts";
 import type { initAccount } from "./account.ts";
@@ -229,26 +229,63 @@ export function initLessonMode(ctx: LessonContext) {
   }
 
   /** Copy the lesson tab into a student's experiment. `edited` is the editor text when an edit triggered it. */
-  function fork(edited?: string, message = "Your edit started an experiment. The lesson is unchanged.") {
+  /**
+   * Copy the lesson tab into a student's experiment. When a keystroke triggered it (`change`,
+   * applied to the lesson's current text), the experiment starts from the last complete code
+   * instead: the student's edit is mapped back over the instructor's half-typed characters.
+   */
+  function fork(edited?: string, message = "Your edit started an experiment. The lesson is unchanged.", change?: ChangeSet) {
     audio.pause();
     shownMs = Math.round(shownMs);
     const from = lessonTab!;
+    const slot = shownSlot(from);
+    let origin = shownMs;
+    let base: Map<SlotId, Text> | null = null;
+    let cursor: number | null = null;
+    const clean = change ? completeAt(shownMs) : shownMs;
+    if (change && clean < shownMs) {
+      const cleanState = seek(lesson!, marks, clean);
+      const cleanDoc = cleanState.docs.get(slot)!;
+      // The instructor's edits to this file since the clean point, as one change…
+      let since: ChangeSet | null = null;
+      for (const e of lesson!.events) {
+        if (e.t > clean && e.t <= shownMs && e.type === "change" && e.file === slot) {
+          const cs = ChangeSet.fromJSON(e.changes);
+          since = since ? since.compose(cs) : cs;
+        }
+      }
+      // …undone, with the student's keystroke carried over onto the clean text.
+      const mine = since ? change.map(since.invert(cleanDoc)) : change;
+      base = cleanState.docs;
+      base.set(slot, mine.apply(cleanDoc));
+      mine.iterChanges((_fa, _ta, _fb, toB) => (cursor = toB));
+      origin = clean;
+      edited = undefined;
+    }
     const exp: LessonTab = {
       ...from,
       id: "t-" + Date.now(),
-      name: ctx.uniqueTabName(`${lesson!.title} (experiment from ${formatTime(shownMs)})`),
+      name: ctx.uniqueTabName(`${lesson!.title} (experiment from ${formatTime(origin)})`),
       lessonSource: undefined,
-      lesson: { slug: slug!, originMs: shownMs },
+      lesson: { slug: slug!, originMs: origin },
     };
+    if (base) for (const [id, doc] of base) writeSlot(exp, id, doc.toString());
     if (edited !== undefined) writeSlot(exp, shownSlot(from), edited);
     // The editor already shows this text, so only re-point the app; the lesson tab keeps the teacher's text.
     ctx.tabs().push(exp);
     ctx.setActiveId(exp.id);
     queueMicrotask(() => {
+      if (base) {
+        // The editor still shows the half-typed text; load the rebased copy and keep the caret
+        // where the student was typing.
+        ctx.loadActiveIntoEditor();
+        if (cursor !== null) ctx.editor.dispatch({ selection: { anchor: Math.min(cursor, ctx.editor.state.doc.length) } });
+      }
       ctx.refreshChrome();
       render();
       ctx.showToast(message);
     });
+    return !!base;
   }
 
   function backToLesson(play = false) {
@@ -315,15 +352,18 @@ export function initLessonMode(ctx: LessonContext) {
   // When the lesson stops somewhere (pause, scrub, arrow keys, resume), step back to the latest
   // moment where its script is complete code, and rewind the audio to match.
   const scriptSlot = (): SlotId => (lesson!.kind === "playground" ? "js" : "main");
-  async function completeAt(ms: number): Promise<number> {
-    const { transpile } = await import("./transpile.ts");
+  // Loaded with the lesson, so the check can run synchronously (a fork happens mid-keystroke).
+  let transpile: ((src: string) => unknown) | null = null;
+  function completeAt(ms: number): number {
+    if (!transpile) return ms;
+    const parse = transpile;
     const slot = scriptSlot();
     // "Complete" means it parses; best is also at the end of a finished line, so a pause
     // shows `nums.map(…);` rather than a valid-but-half-typed `nums.ma`.
     const check = (t: number) => {
       const docs = seek(lesson!, marks, t).docs;
       try {
-        transpile(docs.get(slot)?.toString() ?? "");
+        parse(docs.get(slot)?.toString() ?? "");
       } catch {
         return 0;
       }
@@ -350,7 +390,8 @@ export function initLessonMode(ctx: LessonContext) {
   let snapGen = 0;
   async function settleAt(ms: number) {
     const gen = ++snapGen;
-    const clean = await completeAt(ms);
+    const clean = completeAt(ms);
+    await Promise.resolve(); // let a Play click in the same task win
     // Only if nothing moved on meanwhile (another seek, Play, or leaving the lesson tab).
     if (gen !== snapGen || clean >= ms - 1 || !audio.paused || !onLessonTab()) return;
     audio.currentTime = clean / 1000;
@@ -390,6 +431,7 @@ export function initLessonMode(ctx: LessonContext) {
       if (!res.ok) throw new Error(`Lesson "${name}" not found (${res.status})`);
       lesson = (await res.json()) as Lesson;
       marks = checkpoints(lesson);
+      transpile = (await import("./transpile.ts")).transpile;
       // A blob URL is always seekable, whatever Range support the host has.
       const media = await fetch(`/lessons/${lesson.audio}`);
       if (!media.ok) throw new Error(`Audio for "${name}" not found (${media.status})`);
@@ -585,11 +627,12 @@ export function initLessonMode(ctx: LessonContext) {
   setInterval(() => rec && !rec.done && renderTime(), 250);
 
   return {
-    /** Every editor update goes through here before the app's own handling. */
-    onUpdate(update: ViewUpdate) {
+    /** Every editor update goes through here before the app's own handling; true means "handled, don't save". */
+    onUpdate(update: ViewUpdate): boolean | void {
       const tr = update.transactions;
       if (tr.some((t) => t.annotation(slotLoad) || t.annotation(replayed))) return;
-      if (onLessonTab() && update.docChanged) return fork(update.state.doc.toString());
+      // True when the fork replaced the editor's text, so the app must not save what it shows now.
+      if (onLessonTab() && update.docChanged) return fork(update.state.doc.toString(), undefined, update.changes);
       if (update.docChanged) record({ type: "change", file: shownSlot(ctx.activeTab()), changes: update.changes.toJSON() });
       else if (update.selectionSet) {
         const { anchor, head } = update.state.selection.main;

@@ -564,7 +564,7 @@ const editor = new EditorView({
       Prec.highest(highlightCompartment.of(highlightFor(currentMode()))),
       editorTheme,
       EditorView.updateListener.of((update) => {
-        lessonHooks?.onUpdate(update);
+        if (lessonHooks?.onUpdate(update)) return; // a fork is loading its own text
         if (update.geometryChanged || update.heightChanged) positionResults();
         if (update.docChanged) {
           lastEditAt = performance.now();
