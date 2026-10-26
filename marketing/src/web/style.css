@@ -154,6 +154,7 @@ body {
 #btn-examples:hover { color: rgb(var(--lang-play)); }
 #btn-share:hover { color: rgb(var(--lang-ts)); }
 #btn-record:hover, #btn-record.recording { color: rgb(var(--danger)); }
+#btn-record.author-only:not(.recording) { display: none; }
 #btn-settings:hover { color: rgb(var(--warning)); }
 #btn-account:hover, #btn-account.signed-in { color: rgb(var(--accent)); }
 #btn-home:hover { color: rgb(var(--accent)); }
@@ -885,6 +886,7 @@ body.hide-line-numbers .cm-gutters { display: none; }
 }
 
 .example-item:hover { background: rgb(var(--accent) / 0.1); }
+a.example-item { color: inherit; text-decoration: none; }
 
 .example-item-top {
   display: flex;

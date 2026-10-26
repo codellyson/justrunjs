@@ -407,6 +407,7 @@ const TAB_SIZE_KEY = "runjs.tabSize";
 const WORD_WRAP_KEY = "runjs.wordWrap";
 const AUTO_EVAL_KEY = "runjs.autoEval";
 const PLAYGROUND_INLINE_KEY = "runjs.playgroundInline";
+const AUTHOR_KEY = "runjs.author";
 
 function readInt(key: string, fallback: number): number {
   const v = parseInt(localStorage.getItem(key) || "", 10);
@@ -1607,6 +1608,18 @@ if (settingsBtn && popover) {
         clearTimeout(timer);
         timer = null;
       }
+    });
+  }
+
+  // Recording is for the lesson author; students don't see the button unless they opt in.
+  const authorToggle = document.getElementById("opt-author") as HTMLInputElement | null;
+  const showRecord = (on: boolean) => document.getElementById("btn-record")?.classList.toggle("author-only", !on);
+  if (authorToggle) {
+    authorToggle.checked = readBool(AUTHOR_KEY, false);
+    showRecord(authorToggle.checked);
+    authorToggle.addEventListener("change", () => {
+      localStorage.setItem(AUTHOR_KEY, String(authorToggle.checked));
+      showRecord(authorToggle.checked);
     });
   }
 
