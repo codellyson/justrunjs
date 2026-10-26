@@ -532,8 +532,9 @@ main {
 .new-tab-option .example-lang { min-width: 34px; text-align: center; }
 
 @media (min-width: 768px) {
-  /* main.ts anchors it under the + button. */
-  .new-tab-menu { bottom: auto; width: 260px; }
+  /* main.ts anchors it under the + button. Doubled class so it beats the shared
+   * .settings-popover rule (bottom: 12px) that comes later in this file. */
+  .settings-popover.new-tab-menu { bottom: auto; width: 260px; }
 }
 
 /* ---------- settings popover ---------- */
@@ -712,9 +713,9 @@ body.hide-line-numbers .cm-gutters { display: none; }
 
 /* Inline per-line values in the playground JS editor (RunJS-style). */
 .cm-inline-value {
-  color: rgb(var(--text-muted));
+  /* Same readable tone as comments; muted text at partial opacity fell to 3.9:1. */
+  color: color-mix(in srgb, rgb(var(--text-muted)) 50%, rgb(var(--text-secondary)));
   font-style: italic;
-  opacity: 0.85;
   white-space: pre;
   pointer-events: none;
   user-select: none;
