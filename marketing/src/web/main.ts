@@ -562,6 +562,7 @@ const editor = new EditorView({
         lessonHooks?.onUpdate(update);
         if (update.geometryChanged || update.heightChanged) positionResults();
         if (update.docChanged) {
+          lastEditAt = performance.now();
           persistTabs();
           schedule();
         }
@@ -603,6 +604,20 @@ function classify(s: string): ValueKind {
 let lastResults: LineResult[] = [];
 let lastError: string | null = null;
 let lastErrorLine = 0; // line that threw, from the worker; 0 when unknown
+
+// A lesson replays the instructor's typing a character at a time, so the code is briefly
+// broken mid-keystroke. While it plays, an error only shows if the code is still broken
+// SETTLE_MS after the last edit; until then the last good values and preview stay up.
+const SETTLE_MS = 1200;
+let lastEditAt = 0;
+let settleTimer: ReturnType<typeof setTimeout> | undefined;
+function holdErrorWhilePlaying(): boolean {
+  const since = performance.now() - lastEditAt;
+  if (!lessonHooks?.isPlaying() || since >= SETTLE_MS) return false;
+  clearTimeout(settleTimer);
+  settleTimer = setTimeout(runActive, SETTLE_MS - since + 50);
+  return true;
+}
 
 // Beside the editor, each value sits at its source line's height and scrolls with it.
 // Stacked under the editor (phones) that alignment means nothing, so values list in
@@ -812,6 +827,7 @@ async function runEval(): Promise<void> {
   } catch (e) {
     if (myGen !== evalGen) return;
     const msg = e instanceof Error ? e.message : String(e);
+    if (holdErrorWhilePlaying()) return;
     const partial = e as { line?: number; results?: LineResult[] };
     lastError = msg;
     lastErrorLine = partial.line ?? 0;
@@ -882,6 +898,7 @@ async function renderPreview(): Promise<void> {
     setStatus("rendered", "ok");
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    if (holdErrorWhilePlaying()) return;
     userBody = `<pre style="margin:16px;color:#b00020;font:13px ui-monospace,monospace;white-space:pre-wrap">${escapeHtml(msg)}</pre>`;
     setStatus(msg, "error");
   }

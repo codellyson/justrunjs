@@ -498,5 +498,7 @@ export function initLessonMode(ctx: LessonContext) {
     onRun() { record({ type: "run" }); },
     /** Tab switches change what the bar offers (Back to lesson, Play). */
     onTabChange: render,
+    /** True while a lesson is playing on screen (its replayed typing is in progress). */
+    isPlaying: () => onLessonTab() && !audio.paused,
   };
 }
