@@ -605,6 +605,7 @@ function classify(s: string): ValueKind {
 let lastResults: LineResult[] = [];
 let lastError: string | null = null;
 let lastErrorLine = 0; // line that threw, from the worker; 0 when unknown
+let lastGoodResults: LineResult[] = []; // from the last run that finished, for lines above a syntax error
 
 // A lesson replays the instructor's typing a character at a time, so the code is briefly
 // broken mid-keystroke. While it plays, an error only shows if the code is still broken
@@ -675,6 +676,18 @@ function paintResults(): void {
   applyInlineValues();
 }
 
+// Plain-language versions of the errors beginners hit most; the original stays on hover.
+const PLAIN_ERRORS: [RegExp, (m: RegExpMatchArray) => string][] = [
+  [/^Unterminated string constant/, () => "A string is missing its closing quote"],
+  [/^Unterminated template/, () => "A template string is missing its closing backtick (`)"],
+  [/^Unexpected token, expected "(.+)"/, (m) => `This line isn't finished: expected "${m[1]}" here (maybe a comma or a closing bracket)`],
+  [/^Unexpected token/, () => "This line isn't finished or has a typo"],
+  [/^Missing semicolon/, () => "Two statements run together: add a ; or a line break"],
+  [/^(\S+) is not defined/, (m) => `${m[1]} isn't defined (check the spelling, or define it first)`],
+  [/^Cannot read propert(?:y|ies) of (undefined|null) \(reading '(.+)'\)/, (m) => `Can't read .${m[2]} of ${m[1]}`],
+  [/^(\S+) is not a function/, (m) => `${m[1]} isn't a function, so it can't be called`],
+];
+
 /** The current scratchpad error, placed on a line, or null. */
 function scratchError(): { line: number; message: string } | null {
   if (!lastError) return null;
@@ -682,10 +695,14 @@ function scratchError(): { line: number; message: string } | null {
   const at = lastError.match(/\((\d+):\d+\)/);
   const line = at ? Number(at[1]) : lastErrorLine;
   // The line is shown separately; drop Babel's internal file name and keep the column.
-  const message = lastError
-    .split("\n")[0]
-    .replace(/^\/?user\.\w+:\s*/, "")
-    .replace(/\s*\(\d+:(\d+)\)/, " (column $1)");
+  const raw = lastError.split("\n")[0].replace(/^\/?user\.\w+:\s*/, "");
+  const column = raw.match(/\(\d+:(\d+)\)/)?.[1];
+  const bare = raw.replace(/\s*\(\d+:\d+\)/, "");
+  const plain = PLAIN_ERRORS.find(([re]) => re.test(bare));
+  let message = plain ? plain[1](bare.match(plain[0])!) : bare;
+  if (column) message += ` (column ${column})`;
+  // A runtime error stops everything after it; say so when there's code below.
+  if (!at && line && line < editor.state.doc.lines) message += ". Lines after this didn't run";
   if (line) return { line, message };
   // No line at all: say where it can't be earlier than, rather than pretending it's line 1.
   const lastGood = Math.max(0, ...lastResults.map((r) => r.line));
@@ -826,6 +843,7 @@ async function runEval(): Promise<void> {
     if (myGen !== evalGen) return;
     lastError = null;
     lastResults = results;
+    lastGoodResults = results;
     paintResults();
     setStatus(
       `${results.length} result${results.length === 1 ? "" : "s"} · ${ms}ms`,
@@ -838,8 +856,10 @@ async function runEval(): Promise<void> {
     const partial = e as { line?: number; results?: LineResult[] };
     lastError = msg;
     lastErrorLine = partial.line ?? 0;
-    // Values from the lines before the throw are still true; keep them.
-    lastResults = partial.results ?? [];
+    // Values from the lines before the throw are still true; keep them. A syntax error runs
+    // nothing, so lines above it keep their values from the last run that finished.
+    const syntaxLine = Number(msg.match(/\((\d+):\d+\)/)?.[1] ?? 0);
+    lastResults = syntaxLine ? lastGoodResults.filter((r) => r.line > 0 && r.line < syntaxLine) : (partial.results ?? []);
     paintResults();
     setStatus(msg, "error");
   } finally {
