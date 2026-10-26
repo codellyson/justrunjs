@@ -276,6 +276,7 @@ const editorTheme = EditorView.theme(
     },
     ".cm-content": {
       fontFamily: "var(--font-mono)",
+      fontVariationSettings: '"MONO" 1, "CASL" 1',
       padding: "10px 0",
       caretColor: "rgb(var(--text-primary))",
     },
@@ -297,6 +298,7 @@ const editorTheme = EditorView.theme(
     ".cm-cursor": { borderLeftColor: "rgb(var(--accent))" },
     ".cm-scroller": {
       fontFamily: "var(--font-mono)",
+      fontVariationSettings: '"MONO" 1, "CASL" 1',
       overflow: "auto",
     },
     "&.cm-focused": { outline: "none" },
@@ -312,30 +314,19 @@ const editorTheme = EditorView.theme(
 // 4.5:1 or better on both backgrounds, so they stay quiet but readable in every theme.
 const COMMENT_COLOR = "color-mix(in srgb, rgb(var(--text-muted)) 50%, rgb(var(--text-secondary)))";
 
+// Dark code colours match the lessons (src/learn/lesson-page.ts), so code reads the same everywhere.
 const darkHighlight = HighlightStyle.define([
-  { tag: tags.keyword, color: "#e879a4" },
-  { tag: tags.controlKeyword, color: "#e879a4" },
-  { tag: tags.moduleKeyword, color: "#e879a4" },
-  { tag: tags.definitionKeyword, color: "#e879a4" },
-  { tag: [tags.string, tags.special(tags.string)], color: "#b8d077" },
-  { tag: tags.number, color: "#c397f5" },
-  { tag: tags.bool, color: "#c397f5" },
-  { tag: tags.null, color: "#c397f5" },
-  { tag: tags.atom, color: "#c397f5" },
-  { tag: tags.variableName, color: "#8fc1e0" },
-  { tag: tags.propertyName, color: "#8fc1e0" },
-  { tag: tags.function(tags.variableName), color: "#b8d077" },
-  { tag: tags.function(tags.propertyName), color: "#e879a4" },
-  { tag: tags.typeName, color: "#8fc1e0" },
-  { tag: tags.className, color: "#8fc1e0" },
-  { tag: tags.comment, color: COMMENT_COLOR, fontStyle: "italic" },
-  { tag: tags.lineComment, color: COMMENT_COLOR, fontStyle: "italic" },
-  { tag: tags.blockComment, color: COMMENT_COLOR, fontStyle: "italic" },
-  { tag: tags.operator, color: "#e879a4" },
-  { tag: tags.punctuation, color: "#e8ded2" },
-  { tag: tags.bracket, color: "#e8ded2" },
-  { tag: tags.regexp, color: "#f0b870" },
-  { tag: tags.escape, color: "#f0b870" },
+  { tag: [tags.keyword, tags.controlKeyword, tags.moduleKeyword, tags.definitionKeyword, tags.operator], color: "#e8a6c8" },
+  { tag: [tags.string, tags.special(tags.string)], color: "#c9d98a" },
+  { tag: [tags.number, tags.bool, tags.null, tags.atom], color: "#f0c27a" },
+  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName), tags.typeName, tags.className], color: "#8fc3f0" },
+  { tag: tags.propertyName, color: "#8fc3f0" },
+  { tag: [tags.comment, tags.lineComment, tags.blockComment], color: COMMENT_COLOR, fontStyle: "italic" },
+  { tag: [tags.punctuation, tags.bracket], color: "#d6cbbd" },
+  { tag: [tags.regexp, tags.escape], color: "#f0c27a" },
+  { tag: [tags.tagName, tags.angleBracket], color: "#e8a6c8" },
+  { tag: tags.attributeName, color: "#8fc3f0" },
+  { tag: tags.attributeValue, color: "#c9d98a" },
 ]);
 
 const lightHighlight = HighlightStyle.define([
@@ -1326,7 +1317,7 @@ if (settingsBtn && popover) {
   const getThemes = (): Record<string, ThemeDefinition> =>
     window.__JUSTUI__?.themes || {};
   const currentThemeId = (): string =>
-    document.documentElement.dataset.themeId || "espresso";
+    document.documentElement.dataset.themeId || "classroom";
   const currentThemeMode = (): Mode =>
     document.documentElement.dataset.themeMode === "light" ? "light" : "dark";
   const applyVariant = (variant: ThemeVariant, mode: Mode): void => {

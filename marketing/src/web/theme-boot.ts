@@ -1,3 +1,3 @@
-import { bootTheme } from "@codellyson/justui/boot";
+import { bootClassroom } from "../lib/classroom-theme";
 
-bootTheme({ keyPrefix: "runjs" });
+bootClassroom();

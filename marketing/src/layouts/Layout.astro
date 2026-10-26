@@ -1,6 +1,5 @@
 ---
-import '@fontsource-variable/geist';
-import '@fontsource-variable/geist-mono';
+import '@fontsource-variable/recursive/full.css';
 import '../styles/global.css';
 
 interface Props {
@@ -37,12 +36,12 @@ const canonical = new URL(Astro.url.pathname, Astro.site).toString();
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="justrunjs" />
 
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f9fafb" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#16140f" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#faf5ee" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1a1512" />
 
     <script>
-      import { bootTheme } from "@codellyson/justui/boot";
-      bootTheme({ keyPrefix: "runjs" });
+      import { bootClassroom } from "../lib/classroom-theme";
+      bootClassroom();
     </script>
 
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />

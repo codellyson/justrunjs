@@ -9,7 +9,8 @@
 // unstyled and ends up invisible in the page corner.
 import "../../styles/global.css";
 import "../../web/style.css";
-import { BUILT_IN_THEMES } from "../../lib/theme-plugins";
+import "@fontsource-variable/recursive/full.css";
+import { THEMES } from "../../lib/classroom-theme";
 import { EXAMPLE_CATEGORIES } from "../../web/examples";
 import { readFileSync } from "node:fs";
 import course from "../../learn/course.json";
@@ -262,7 +263,7 @@ const LESSONS = course.lessons.map((slug) => {
 
         <div class="settings-themes">
           {
-            BUILT_IN_THEMES.map((t) => (
+            THEMES.map((t) => (
               <button
                 type="button"
                 class="theme-option"

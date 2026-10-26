@@ -47,8 +47,8 @@ The lesson is not a video of an editor; it is the editor. Recorded edits replay 
 ## Brand Commitments
 
 - Name: **justrunjs** (lowercase). Part of the owner's "just\*" family of apps.
-- Built on the owner's design system `@codellyson/justui` (themes, tokens, boot script); the scratchpad and landing page follow its theme catalogue rather than defining their own.
-- Lessons (`/learn/`) are the exception: the classroom has one fixed look, personal, immersive and warm. A warm dark stage, the Recursive typeface (casual mono for code), the instructor in apricot and the student's work in teal. It does not change with the scratchpad's theme.
+- One look everywhere, the classroom's: personal, immersive and warm. A warm dark stage, the Recursive typeface (casual mono for code), apricot for the teacher and actions, teal for values and the student's work. Lessons (`/learn/`) always use it.
+- Built on the owner's design system `@codellyson/justui` (tokens, boot script, theme picker). The look ships as the "Classroom" theme (`src/lib/classroom-theme.ts`), the default on its dark stage for the landing page and scratchpad; justui's other themes stay available in the picker.
 
 ## Evidence on Hand
 

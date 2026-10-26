@@ -1,39 +1,24 @@
-/* Geist + Geist Mono via jsdelivr's @fontsource-variable mirror so the editor
- * matches the marketing site without dragging a JS font loader into a plain
- * static page. */
-@font-face {
-  font-family: "Geist Variable";
-  src: url("https://cdn.jsdelivr.net/npm/@fontsource-variable/geist@5.1.0/files/geist-latin-wght-normal.woff2") format("woff2");
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Geist Mono Variable";
-  src: url("https://cdn.jsdelivr.net/npm/@fontsource-variable/geist-mono@5.1.0/files/geist-mono-latin-wght-normal.woff2") format("woff2");
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
+/* Recursive (self-hosted, imported by the page): the same type as the lessons. Code uses its
+ * casual mono, set with font-variation-settings wherever --font-mono is. */
 
 /*
  * Theme tokens — applied by theme-boot.js at startup. These :root values
- * are the SSR/no-JS fallback (Espresso dark), so the page never paints
+ * are the SSR/no-JS fallback (Classroom dark), so the page never paints
  * unstyled even if the boot script fails.
  */
 :root {
-  --bg: 22 20 18;
-  --bg-secondary: 37 33 30;
-  --border: 56 50 45;
-  --text-primary: 232 222 210;
-  --text-secondary: 178 167 152;
-  --text-muted: 144 135 125;
-  --accent: 168 180 220;
-  --accent-hover: 195 205 235;
-  --accent-text: 22 20 18;
-  --danger: 220 105 95;
-  --success: 165 195 130;
-  --warning: 230 195 115;
+  --bg: 26 21 18;
+  --bg-secondary: 34 28 24;
+  --border: 58 49 42;
+  --text-primary: 243 234 223;
+  --text-secondary: 214 203 189;
+  --text-muted: 179 165 150;
+  --accent: 240 163 94;
+  --accent-hover: 244 180 122;
+  --accent-text: 26 21 18;
+  --danger: 242 167 160;
+  --success: 127 203 181;
+  --warning: 240 194 122;
 
   /* Language identity colours — absolute (constant across themes), so the
    * editor chrome speaks the same vocabulary as syntax highlighting. Tuned to
@@ -45,9 +30,9 @@
   --lang-npm: 203 72 71; /* npm red */
   --lang-play: 149 123 246; /* Playground violet */
 
-  --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo,
+  --font-mono: "Recursive Variable", ui-monospace, SFMono-Regular, Menlo,
     Consolas, monospace;
-  --font-sans: "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
+  --font-sans: "Recursive Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
 }
 
@@ -98,6 +83,7 @@ body {
   background: rgb(var(--bg));
   color: rgb(var(--text-primary));
   font-family: var(--font-sans);
+  font-variation-settings: "MONO" 0, "CASL" 0.6;
 }
 
 body {
@@ -261,6 +247,7 @@ main {
 #results {
   background: rgb(var(--bg));
   font-family: var(--font-mono);
+  font-variation-settings: "MONO" 1, "CASL" 1;
   font-size: 13.5px;
   line-height: 21px;
   overflow: auto;
@@ -365,6 +352,7 @@ main {
   font-style: italic;
   padding: 24px 16px;
   font-family: var(--font-sans);
+  font-variation-settings: "MONO" 0, "CASL" 0.6;
   font-size: 13px;
 }
 
@@ -423,6 +411,7 @@ main {
   border: 0;
   cursor: pointer;
   font-family: var(--font-mono);
+  font-variation-settings: "MONO" 1, "CASL" 1;
   transition: background 0.12s ease;
 }
 
@@ -439,6 +428,7 @@ main {
 
 .tab .tab-name {
   font-family: var(--font-mono);
+  font-variation-settings: "MONO" 1, "CASL" 1;
 }
 
 .tab .tab-close {
@@ -747,6 +737,7 @@ body.hide-line-numbers .cm-gutters { display: none; }
   border-bottom: 2px solid transparent;
   color: rgb(var(--text-muted));
   font-family: var(--font-mono);
+  font-variation-settings: "MONO" 1, "CASL" 1;
   font-size: 11.5px;
   letter-spacing: 0.4px;
   text-transform: uppercase;
@@ -851,6 +842,7 @@ body.hide-line-numbers .cm-gutters { display: none; }
   flex: 1 1 auto;
   overflow: auto;
   font-family: var(--font-mono);
+  font-variation-settings: "MONO" 1, "CASL" 1;
   font-size: 12.5px;
   line-height: 1.5;
   padding: 2px 0 8px;
@@ -1047,7 +1039,8 @@ select.lesson-btn {
 }
 select.lesson-btn option { background: rgb(var(--bg-secondary)); color: rgb(var(--text-primary)); }
 
-.lesson-time { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.lesson-time { font-family: var(--font-mono);
+  font-variation-settings: "MONO" 1, "CASL" 1; font-variant-numeric: tabular-nums; }
 .lesson-dot {
   width: 8px;
   height: 8px;
@@ -1174,6 +1167,7 @@ select.lesson-btn option { background: rgb(var(--bg-secondary)); color: rgb(var(
 .shortcut-list dd { margin: 0; }
 .shortcut-list kbd {
   font-family: var(--font-mono);
+  font-variation-settings: "MONO" 1, "CASL" 1;
   font-size: 11px;
   padding: 1px 5px;
   border: 1px solid rgb(var(--border));
@@ -1260,3 +1254,6 @@ main.no-results #results { display: none; }
 /* ---------- first visit: empty editor ---------- */
 
 .cm-placeholder { color: rgb(var(--text-muted)); font-style: italic; }
+
+/* Classroom theme: values in teal, upright, as in the lessons. */
+[data-theme-id="classroom"] .cm-inline-value:not(.cm-inline-error) { color: rgb(var(--success)); font-style: normal; }
