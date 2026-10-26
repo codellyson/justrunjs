@@ -12,7 +12,7 @@ interface Props {
 
 const {
   title = 'justrunjs — a JavaScript scratchpad with inline values.',
-  description = 'Type TypeScript or JavaScript. Every top-level value shows up next to its source line. Native desktop, in the browser, or both. Open source.',
+  description = 'Type TypeScript or JavaScript. Every top-level value shows up next to its source line. Runs in your browser. Open source.',
   jsonLd,
 } = Astro.props;
 
@@ -30,7 +30,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site).toString();
     <title>{title}</title>
     <meta name="description" content={description} />
 
-    <meta name="keywords" content="JavaScript scratchpad, TypeScript playground, RunJS alternative, inline values, ESM imports, npm browser, Rust V8, Tauri" />
+    <meta name="keywords" content="JavaScript scratchpad, TypeScript playground, RunJS alternative, inline values, ESM imports, npm browser" />
     <meta name="author" content="codellyson" />
     <meta name="category" content="developer-tools" />
     <meta name="mobile-web-app-capable" content="yes" />

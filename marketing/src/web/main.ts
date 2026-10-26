@@ -61,33 +61,6 @@ type ReplyMessage =
   | { id: number; ok: false; error: string };
 type WorkerMessage = ReadyMessage | ReplyMessage;
 
-interface TauriWindowHandle {
-  minimize(): void | Promise<void>;
-  toggleMaximize(): void | Promise<void>;
-  close(): void | Promise<void>;
-  isMaximized(): Promise<boolean>;
-  onResized(cb: () => void): Promise<() => void>;
-}
-
-interface TauriCore {
-  invoke<T = unknown>(cmd: string, args?: Record<string, unknown>): Promise<T>;
-}
-
-interface TauriWindowApi {
-  getCurrentWindow(): TauriWindowHandle;
-}
-
-interface TauriGlobal {
-  core?: TauriCore;
-  window?: TauriWindowApi;
-}
-
-declare global {
-  interface Window {
-    __TAURI__?: TauriGlobal;
-  }
-}
-
 interface ThemeVariant {
   bg?: string;
   bgSecondary?: string;
@@ -628,27 +601,7 @@ function paintResults(): void {
   }
 }
 
-const tauriCore: TauriCore | undefined =
-  typeof window !== "undefined" && window.__TAURI__
-    ? window.__TAURI__.core
-    : undefined;
-
-const transport: Transport = tauriCore
-  ? createTauriTransport(tauriCore)
-  : createWorkerTransport();
-
-function createTauriTransport(core: TauriCore): Transport {
-  return {
-    async evaluate(source: string): Promise<EvalOutcome> {
-      const t0 = performance.now();
-      const results = await core.invoke<LineResult[]>("evaluate_source", { source });
-      return { results, ms: Math.round(performance.now() - t0) };
-    },
-    stop(): void {
-      core.invoke("stop_eval").catch(() => {});
-    },
-  };
-}
+const transport: Transport = createWorkerTransport();
 
 function createWorkerTransport(): Transport {
   let worker: Worker | null = null;
@@ -948,14 +901,10 @@ const isEmbedded =
   new URLSearchParams(window.location.search).get("embed") === "1" ||
   window.parent !== window;
 
-if (isEmbedded || tauriCore) {
+if (isEmbedded) {
   const home = document.getElementById("btn-home");
   if (home) home.style.display = "none";
 }
-
-// The desktop app uses native OS window decorations (see tauri.conf.json), so
-// there's no custom title bar to wire up — the OS draws the title bar, traffic
-// lights / min-max-close, and handles window dragging.
 
 if (isEmbedded) {
   const expand = document.getElementById("btn-expand");

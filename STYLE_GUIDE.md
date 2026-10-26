@@ -19,8 +19,8 @@ ships as `@codellyson/justui` on npm, copy these patterns by hand.
    each. The user picks both axes independently.
 4. **Density.** 13px base font. Compact controls. Justified by the fact
    that "just" apps are tools, not consumer content.
-5. **Same shell, two surfaces.** Tauri desktop and browser SPA share the
-   same bundled UI; only the eval/data transport differs.
+5. **Browser-first.** The app ships as a static browser SPA; there is no
+   desktop shell to keep in sync.
 
 ---
 
@@ -183,16 +183,6 @@ shadcn-style apps), but the structure is the same.
 - Active row: `border-accent bg-accent/10`
 - Mode toggle: full-width button above the list ("Switch to dark/light")
 
-### Custom Tauri title bar
-
-- 32px tall, full width, `bg-bg-secondary border-b border-border`
-- Wordmark on left (`text-xs font-medium text-secondary`)
-- Min/Max/Close buttons on right, each `w-11 h-full`
-- Whole bar is `data-tauri-drag-region`
-- Maximize button SVG swaps to "restore" (stacked squares) when window
-  is maximized — driven by `isMaximized()` + `onResized()` listener
-- Hover: `bg-accent/10 text-primary` (close button: `bg-danger text-white`)
-
 ### Marketing landing layout
 
 - Single column, `max-w-2xl mx-auto`
@@ -204,73 +194,12 @@ shadcn-style apps), but the structure is the same.
 
 ---
 
-## Tauri integration
-
-### Base `tauri.conf.json`
-
-```jsonc
-{
-  "app": {
-    "windows": [
-      {
-        "decorations": false,            // Win/Linux: frameless
-        "backgroundColor": "#161412",    // matches Espresso dark
-        "width": 1280, "height": 800,
-        "minWidth": 720, "minHeight": 480
-      }
-    ]
-  }
-}
-```
-
-### macOS override (`tauri.macos.conf.json`)
-
-```jsonc
-{
-  "app": {
-    "windows": [
-      {
-        "decorations": true,             // overrides false; keeps the window managed
-        "titleBarStyle": "Overlay",      // traffic lights stay; content extends behind
-        "hiddenTitle": true              // no native title text
-      }
-    ]
-  }
-}
-```
-
-This gives:
-- **macOS**: traffic lights at top-left, no native title text, content extends behind. Pad the in-page top strip 80px on the left so it doesn't sit under the traffic lights.
-- **Win/Linux**: frameless. App draws its own title bar with min/max/close + drag region.
-
-### Capability permissions
-
-Title bar controls need explicit Tauri 2 permissions in `capabilities/default.json`:
-
-```json
-"permissions": [
-  "core:default",
-  "core:window:allow-minimize",
-  "core:window:allow-toggle-maximize",
-  "core:window:allow-close",
-  "core:window:allow-is-maximized",
-  "core:window:allow-start-dragging"
-]
-```
-
----
-
 ## File structure
 
 A new `just*` app starts with:
 
 ```
 .
-├── tauri.conf.json
-├── tauri.macos.conf.json
-├── capabilities/default.json
-├── icons/  (cargo tauri icon outputs)
-├── src/  (Rust)
 └── marketing/   (Astro)
     ├── astro.config.mjs
     ├── tailwind.config.mjs          # token-driven colors
@@ -304,9 +233,7 @@ A new `just*` app starts with:
 2. Copy `marketing/src/styles/global.css` (Tailwind directives + fallback `:root`).
 3. Copy `marketing/tailwind.config.mjs` (token mapping).
 4. Copy `marketing/src/components/{Button,ThemeToggle}.astro` for marketing chrome.
-5. Mirror the Tauri base + macOS conf JSONs from this repo.
-6. Run `cargo tauri icon` against a 1024×1024 PNG to fill `icons/`.
-7. Set the app's localStorage key prefix (e.g. `mynewapp.theme.id`) consistently.
+5. Set the app's localStorage key prefix (e.g. `mynewapp.theme.id`) consistently.
 
 ---
 

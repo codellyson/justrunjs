@@ -7,7 +7,6 @@ import EditorEmbed from '../components/EditorEmbed.astro';
 // In-browser scratchpad lives at /app (built later — link works today,
 // page is added in the web/ workspace).
 const launchUrl = '/web/index.html';
-const downloadUrl = 'https://github.com/codellyson/justrunjs/releases';
 const repoUrl = 'https://github.com/codellyson/justrunjs';
 
 const FAQ = [
@@ -17,7 +16,7 @@ const FAQ = [
   },
   {
     q: 'TypeScript without a tsconfig?',
-    a: 'Yes. Types are stripped via SWC before the code runs in V8. There is no project, no tsconfig, no install step. Per-tab TS/JS switching.',
+    a: 'Yes. Types are stripped in your browser before the code runs. There is no project, no tsconfig, no install step. Per-tab TS/JS switching.',
   },
   {
     q: 'Can I import packages?',
@@ -25,7 +24,7 @@ const FAQ = [
   },
   {
     q: 'Does it work offline?',
-    a: 'The native desktop build runs entirely on your machine; the V8 isolate is bundled. npm: and https: imports need a network. The browser build needs a network for the page itself.',
+    a: 'The page needs a network to load. After that your code runs in your browser; only npm: and https: imports go back to the network.',
   },
   {
     q: 'Is it free?',
@@ -55,12 +54,11 @@ const softwareJsonLd = {
   '@type': 'SoftwareApplication',
   name: 'justrunjs',
   description:
-    'A JavaScript scratchpad with inline values. Write TypeScript or JavaScript and see every top-level expression render its value on the same line. Native desktop, in the browser, or both.',
+    'A JavaScript scratchpad with inline values. Write TypeScript or JavaScript in your browser and see every top-level expression render its value on the same line.',
   applicationCategory: 'DeveloperApplication',
-  operatingSystem: 'macOS, Windows, Linux, Web',
+  operatingSystem: 'Web',
   offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
   url: Astro.site?.toString() ?? 'https://runjs-rs.pages.dev',
-  downloadUrl,
 };
 
 const faqJsonLd = {
@@ -75,24 +73,13 @@ const faqJsonLd = {
 ---
 
 <Layout jsonLd={[softwareJsonLd, faqJsonLd]}>
-  <!--
-    If the marketing landing somehow loads inside the Tauri desktop window
-    (e.g. tauri.conf.json's `url` field didn't navigate where we expected),
-    immediately redirect to the editor route. Browsers never see this firing
-    because window.__TAURI__ is only present in the Tauri webview.
-  -->
-  <script is:inline>
-    if (typeof window !== "undefined" && window.__TAURI__) {
-      window.location.replace("/web/index.html");
-    }
-  </script>
   <ThemeToggle />
   <div class="min-h-screen bg-bg">
     <main class="container mx-auto px-6 sm:px-8 py-16 sm:py-24">
       <div class="max-w-2xl mx-auto">
 
         <header class="mb-16">
-          <p class="font-mono text-xs text-muted mb-4">v0.1 · open source · Rust + V8</p>
+          <p class="font-mono text-xs text-muted mb-4">v0.1 · open source · runs in your browser</p>
           <h1 class="text-5xl sm:text-6xl font-semibold tracking-tight text-primary mb-4">
             justrunjs
           </h1>
@@ -102,15 +89,12 @@ const faqJsonLd = {
           <p class="text-base text-secondary leading-relaxed max-w-xl">
             Write TypeScript or JavaScript. Every top-level expression renders
             its value next to the source line, the moment you stop typing.
-            Native desktop, in the browser, or both.
+            Nothing to install.
           </p>
 
           <div class="flex flex-wrap items-center gap-3 mt-8">
             <Button variant="primary" href="#playground" data-action="open-editor">
               Open in browser
-            </Button>
-            <Button variant="secondary" href={downloadUrl} external>
-              Download for desktop
             </Button>
           </div>
         </header>
@@ -205,14 +189,6 @@ const faqJsonLd = {
           <p class="text-xs text-muted/70 flex flex-wrap items-center gap-3">
             <a href={repoUrl} class="hover:text-primary transition-colors" target="_blank" rel="noopener noreferrer">
               GitHub
-            </a>
-            <span class="opacity-50">·</span>
-            <a href={downloadUrl} class="hover:text-primary transition-colors" target="_blank" rel="noopener noreferrer">
-              Releases
-            </a>
-            <span class="opacity-50">·</span>
-            <a href={`${repoUrl}/blob/master/DESIGN.md`} class="hover:text-primary transition-colors" target="_blank" rel="noopener noreferrer">
-              Design notes
             </a>
           </p>
         </footer>
