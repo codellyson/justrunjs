@@ -15,6 +15,7 @@ import { createScratchRunner } from "../web/scratch-runner.ts";
 import { createPreview } from "../web/preview.ts";
 import { findCopy, saveCopy, type LessonCopy } from "./copies.ts";
 import { doneLessons, markDone, savePosition, savedPosition } from "./progress.ts";
+import { pushCopy, pushProgress, signedInEmail, syncAll } from "./sync.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -107,6 +108,8 @@ export async function startLesson(slug: string) {
   const countEl = $("lp-count");
   const lessons = JSON.parse(root.dataset.lessons ?? "[]") as string[];
 
+  // Signed in: bring copies and progress from the account before resuming or reopening a copy.
+  const synced = syncAll();
   const audio = new Audio();
   let lesson: Lesson;
   let marks: ReplayState[];
@@ -302,7 +305,18 @@ export async function startLesson(slug: string) {
   function saveNow() {
     clearTimeout(saveTimer);
     if (!copy || !copyKept) return; // opening Your turn without changing anything leaves no copy behind
-    savedEl.textContent = saveCopy(copy) ? "Saved on this device" : "Couldn't save on this device: your browser's storage is full or blocked";
+    if (!saveCopy(copy)) {
+      savedEl.textContent = "Couldn't save on this device: your browser's storage is full or blocked";
+      return;
+    }
+    const saving = copy;
+    void pushCopy(saving).then((state) => {
+      if (copy !== saving) return; // the student has moved on
+      savedEl.textContent =
+        state === "account" ? "Saved in your account"
+        : state === "failed" ? "Saved on this device. Couldn't reach your account; it tries again on your next change."
+        : "Saved on this device";
+    });
   }
   function saveSoon() {
     clearTimeout(saveTimer);
@@ -356,6 +370,10 @@ export async function startLesson(slug: string) {
       updatedAt: 0,
     };
     savedEl.textContent = existing ? "Saved on this device" : "Your changes save on this device";
+    void signedInEmail().then((email) => {
+      if (!email || !copy) return;
+      savedEl.textContent = !existing ? "Your changes save to your account" : existing.synced === false ? "Saved on this device" : "Saved in your account";
+    });
     const atEnd = origin >= lesson.durationMs - 250;
     ytText.textContent = atEnd
       ? "This is where we ended up. Change anything you like; my version stays exactly as it was."
@@ -466,7 +484,9 @@ export async function startLesson(slug: string) {
   let positionSavedAt = 0;
   function rememberPosition() {
     positionSavedAt = performance.now();
-    if (!ended) savePosition(slug, audio.currentTime * 1000);
+    if (ended) return;
+    savePosition(slug, audio.currentTime * 1000);
+    void pushProgress(slug, audio.currentTime * 1000);
   }
 
   /** Done lessons in the header: teal dots, and a count once this one is finished. */
@@ -482,6 +502,7 @@ export async function startLesson(slug: string) {
     ended = true;
     markDone(slug);
     savePosition(slug, 0);
+    void pushProgress(slug, 0, true);
     $("lp-end-text").textContent = lesson.outro ?? "Click into the code and change anything you like; my version stays exactly as it was.";
     paintDone();
     requestAnimationFrame(() => document.querySelector(".lp-end")?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
@@ -576,6 +597,11 @@ export async function startLesson(slug: string) {
   });
   $("lp-end-try").addEventListener("click", () => enterCopy());
   $("lp-again").addEventListener("click", togglePlay);
+
+  // Wait briefly for the account, so a copy or position from another device is here to open.
+  await Promise.race([synced, new Promise((r) => setTimeout(r, 3000))]);
+  paintDone();
+  addEventListener("online", () => void syncAll());
 
   // Pick up where the student left off, at the last complete code before that point.
   const resumeAt = savedPosition(slug);

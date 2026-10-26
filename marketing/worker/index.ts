@@ -1,5 +1,5 @@
 // justrunjs API: email sign-in (link or typed code), and per-learner storage for lesson
-// experiments and lesson progress. Everything else is the static Astro build.
+// copies, scratchpad experiments and lesson progress. Everything else is the static Astro build.
 // Sign-in follows Fillie's worker (personal-projects/fillie/app/worker/index.js).
 
 const DAY = 86400_000;
@@ -52,7 +52,7 @@ main{max-width:360px;width:100%;border:1px solid #3a332d;border-radius:10px;padd
 }
 
 async function requestSignIn(req: Request, env: Env, url: URL) {
-  const { email: raw } = (await req.json().catch(() => ({}))) as { email?: unknown };
+  const { email: raw, from } = (await req.json().catch(() => ({}))) as { email?: unknown; from?: unknown };
   const email = String(raw ?? "").trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) return fail(400, "Enter a valid email address.");
   // shortcut: this edge limit is per Cloudflare location; use a global limiter if cross-region abuse appears.
@@ -64,7 +64,8 @@ async function requestSignIn(req: Request, env: Env, url: URL) {
   const code = randomCode();
   await env.DB.prepare("INSERT INTO login_tokens (token_hash, code_hash, email, expires_at, created_at) VALUES (?, ?, ?, ?, ?)")
     .bind(await sha256(token), await sha256(code), email, Date.now() + 15 * 60_000, Date.now()).run();
-  const link = `${url.origin}/auth/verify?token=${token}`;
+  // The link brings the student back to where they asked from: the course or the scratchpad.
+  const link = `${url.origin}/auth/verify?token=${token}${from === "learn" ? "&to=learn" : ""}`;
   try {
     await env.EMAIL.send({
       to: email,
@@ -108,15 +109,18 @@ async function verifyLink(req: Request, env: Env, url: URL) {
   if (req.method === "GET") {
     const token = url.searchParams.get("token") ?? "";
     if (!/^[\w-]{43}$/.test(token)) return page("Sign in", "<p>This sign-in link is broken. Ask for a new one.</p>");
-    return page("Sign in", `<h1>Sign in to justrunjs</h1><form method="post" action="/auth/verify"><input type="hidden" name="token" value="${esc(token)}"><button>Sign in</button></form>`);
+    const to = url.searchParams.get("to") === "learn" ? "learn" : "web";
+    return page("Sign in", `<h1>Sign in to justrunjs</h1><form method="post" action="/auth/verify"><input type="hidden" name="token" value="${esc(token)}"><input type="hidden" name="to" value="${to}"><button>Sign in</button></form>`);
   }
-  const token = String((await req.formData()).get("token") ?? "");
-  const used = page("Sign in", '<p>This link has expired or was already used. <a href="/web/">Ask for a new one</a>.</p>');
+  const form = await req.formData();
+  const token = String(form.get("token") ?? "");
+  const home = form.get("to") === "learn" ? "/learn/" : "/web/";
+  const used = page("Sign in", `<p>This link has expired or was already used. <a href="${home}">Ask for a new one</a>.</p>`);
   const row = await env.DB.prepare("SELECT * FROM login_tokens WHERE token_hash = ? AND used = 0 AND expires_at > ?").bind(await sha256(token), Date.now()).first<TokenRow>();
   if (!row) return used;
   const session = await consumeToken(env, row);
   if (!session) return used;
-  return new Response(null, { status: 303, headers: { location: "/web/", "set-cookie": sessionCookie(session.token, url, session.maxAge) } });
+  return new Response(null, { status: 303, headers: { location: home, "set-cookie": sessionCookie(session.token, url, session.maxAge) } });
 }
 
 const body = async <T>(req: Request, max: number): Promise<T> => {
@@ -133,7 +137,7 @@ const ID = /^[\w-]{1,80}$/;
 async function api(req: Request, env: Env, url: URL, user: User) {
   const path = url.pathname;
   const m = req.method;
-  const [, , resource, id] = path.split("/");
+  const [, , resource, id, sub] = path.split("/");
 
   if (path === "/api/me" && m === "GET") return json({ email: user.email });
   if (path === "/api/auth/logout" && m === "POST") {
@@ -168,6 +172,32 @@ async function api(req: Request, env: Env, url: URL, user: User) {
       if (!res.meta.changes) return fail(409, "This experiment changed while saving. Try again.");
       return json({ updatedAt });
     }
+  }
+
+  if (resource === "copies" && !id && m === "GET") {
+    const { results } = await env.DB.prepare("SELECT copy, updated_at FROM lesson_copies WHERE user_id = ? ORDER BY updated_at DESC")
+      .bind(user.userId).all<{ copy: string; updated_at: number }>();
+    return json(results.map((r) => ({ copy: JSON.parse(r.copy), updatedAt: r.updated_at })));
+  }
+  // /api/copies/<slug>/<origin ms>
+  if (resource === "copies" && id && ID.test(id) && /^\d{1,9}$/.test(sub ?? "") && m === "PUT") {
+    const origin = Number(sub);
+    const existing = await env.DB.prepare("SELECT copy, updated_at FROM lesson_copies WHERE user_id = ? AND slug = ? AND origin_ms = ?")
+      .bind(user.userId, id, origin).first<{ copy: string; updated_at: number }>();
+    // `base` is the updatedAt this client last saw; null for a copy it never synced.
+    const { copy, base } = await body<{ copy?: Record<string, unknown>; base?: number | null }>(req, MAX_TAB);
+    if (!copy || typeof copy !== "object" || copy.slug !== id || copy.originMs !== origin || !copy.files || typeof copy.files !== "object")
+      return fail(400, "That isn't a lesson copy.");
+    // Another device saved since this client last looked: hand back their copy, change nothing.
+    if (existing && existing.updated_at !== base) return json({ conflict: true, copy: JSON.parse(existing.copy), updatedAt: existing.updated_at }, 409);
+    const updatedAt = Math.max(Date.now(), (existing?.updated_at ?? 0) + 1);
+    const write = existing
+      ? env.DB.prepare("UPDATE lesson_copies SET copy = ?, updated_at = ? WHERE user_id = ? AND slug = ? AND origin_ms = ? AND updated_at = ?")
+          .bind(JSON.stringify(copy), updatedAt, user.userId, id, origin, existing.updated_at)
+      : env.DB.prepare("INSERT OR IGNORE INTO lesson_copies (user_id, slug, origin_ms, copy, updated_at) VALUES (?, ?, ?, ?, ?)")
+          .bind(user.userId, id, origin, JSON.stringify(copy), updatedAt);
+    if (!(await write.run()).meta.changes) return fail(409, "This copy changed while saving. Try again.");
+    return json({ updatedAt });
   }
 
   if (resource === "progress" && !id && m === "GET") {

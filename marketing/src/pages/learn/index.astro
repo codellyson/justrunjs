@@ -76,7 +76,28 @@ const pencil = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stro
             </li>
           ))}
         </ol>
-        <p class="cp-saved">Your progress and your copies are saved in this browser, on this device.</p>
+        <div class="cp-account">
+          <p class="cp-saved" id="cp-saved" role="status">Your progress and your copies are saved in this browser, on this device.</p>
+          <button type="button" class="cp-link" id="cp-signin-open">Sign in to keep them on every device</button>
+          <button type="button" class="cp-link" id="cp-signout" hidden>Sign out of this browser</button>
+          <form class="cp-signin" id="cp-signin" hidden>
+            <label for="cp-email">Your email</label>
+            <div class="cp-field-row">
+              <input id="cp-email" type="email" autocomplete="email" required placeholder="you@example.com" />
+              <button type="submit" class="cp-btn">Email me a code</button>
+            </div>
+            <p class="cp-hint">No password: we email you a six-digit code.</p>
+          </form>
+          <form class="cp-signin" id="cp-code" hidden>
+            <label for="cp-code-input">The code we emailed to <span id="cp-code-email"></span></label>
+            <div class="cp-field-row">
+              <input id="cp-code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required pattern="[0-9]{6}" />
+              <button type="submit" class="cp-btn">Sign in</button>
+            </div>
+            <button type="button" class="cp-link" id="cp-code-back">Use a different email</button>
+          </form>
+          <p class="cp-error" id="cp-error" role="alert"></p>
+        </div>
       </section>
 
       <section class="cp-how" aria-labelledby="cp-how-h">
@@ -87,8 +108,9 @@ const pencil = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stro
       </section>
     </main>
     <script>
-      import { paintCourse } from "../../learn/course-page.ts";
+      import { paintCourse, initAccount } from "../../learn/course-page.ts";
       paintCourse();
+      initAccount();
     </script>
   </body>
 </html>

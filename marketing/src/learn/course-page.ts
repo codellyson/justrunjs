@@ -3,6 +3,7 @@
 import { formatTime } from "../web/lesson.ts";
 import { copiesOf } from "./copies.ts";
 import { doneLessons, savedPosition } from "./progress.ts";
+import { requestCode, signOut, signedInEmail, syncAll, verifyCode } from "./sync.ts";
 
 export function paintCourse() {
   const rows = [...document.querySelectorAll<HTMLElement>(".cp-row")];
@@ -53,4 +54,68 @@ export function paintCourse() {
     : doneCount === rows.length
       ? "You've finished every lesson"
       : `${doneCount} of ${rows.length} done`;
+}
+
+const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
+
+/** Sign in (email, then a code) so progress and copies follow the student; sync, then repaint. */
+export function initAccount() {
+  const saved = $("cp-saved");
+  const openBtn = $<HTMLButtonElement>("cp-signin-open");
+  const outBtn = $<HTMLButtonElement>("cp-signout");
+  const emailForm = $<HTMLFormElement>("cp-signin");
+  const codeForm = $<HTMLFormElement>("cp-code");
+  const emailInput = $<HTMLInputElement>("cp-email");
+  const codeInput = $<HTMLInputElement>("cp-code-input");
+  const error = $("cp-error");
+
+  function show(email: string | null) {
+    saved.textContent = email
+      ? `Your progress and your copies are saved to your account (${email}), and in this browser.`
+      : "Your progress and your copies are saved in this browser, on this device.";
+    openBtn.hidden = !!email;
+    outBtn.hidden = !email;
+    emailForm.hidden = codeForm.hidden = true;
+    error.textContent = "";
+  }
+
+  async function refresh() {
+    show(await signedInEmail());
+    if (await syncAll()) paintCourse();
+  }
+
+  openBtn.addEventListener("click", () => {
+    openBtn.hidden = true;
+    emailForm.hidden = false;
+    emailInput.focus();
+  });
+  emailForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    error.textContent = "";
+    const problem = await requestCode(emailInput.value.trim());
+    if (problem) return void (error.textContent = problem);
+    $("cp-code-email").textContent = emailInput.value.trim();
+    emailForm.hidden = true;
+    codeForm.hidden = false;
+    codeInput.focus();
+  });
+  codeForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    error.textContent = "";
+    const problem = await verifyCode(emailInput.value.trim(), codeInput.value.trim());
+    if (problem) return void (error.textContent = problem);
+    codeInput.value = "";
+    await refresh();
+  });
+  $("cp-code-back").addEventListener("click", () => {
+    codeForm.hidden = true;
+    emailForm.hidden = false;
+    emailInput.focus();
+  });
+  outBtn.addEventListener("click", async () => {
+    await signOut();
+    show(null);
+  });
+
+  void refresh();
 }

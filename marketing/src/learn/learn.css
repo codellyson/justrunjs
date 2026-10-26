@@ -560,7 +560,53 @@ select.lp-chip option { background: var(--card); }
 .cp-copy:hover { background: rgb(127 203 181 / 0.2); }
 .cp-start { background: var(--teacher); color: var(--ground); font-size: 15px; font-weight: 700; padding: 0 20px; }
 .cp-start:hover { background: #f4b47a; }
-.cp-saved { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
+.cp-account { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 6px; }
+.cp-saved { margin: 0; font-size: 14px; color: var(--muted); }
+.cp-link {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+.cp-link[hidden], .cp-signin[hidden] { display: none; }
+.cp-signin { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 460px; }
+.cp-signin label { font-size: 14px; color: var(--ink-2); }
+.cp-field-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.cp-field-row input {
+  flex: 1 1 220px;
+  min-width: 0;
+  min-height: 46px;
+  box-sizing: border-box;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+}
+.cp-field-row input::placeholder { color: var(--gutter); }
+.cp-btn {
+  min-height: 46px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--student);
+  color: #14201c;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.cp-hint { margin: 0; font-size: 13px; color: var(--muted); }
+.cp-error { margin: 0; font-size: 14px; color: var(--error); }
+.cp-error:empty { display: none; }
 
 .cp-how { display: flex; flex-wrap: wrap; gap: 20px 28px; padding: 28px; border-radius: 18px; background: #1f1a16; }
 .cp-how h2 { flex: 1 1 100%; font-size: 20px; }

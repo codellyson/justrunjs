@@ -3,7 +3,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -108,4 +108,42 @@ test("writes from another site are refused", async () => {
   assert.equal((await api("/api/experiments/t-9", { method: "PUT", body: { tab: tab("t-9", "x"), base: null }, origin: "https://evil.example" })).status, 403);
   assert.equal((await api("/api/auth/logout", { method: "POST" })).status, 200);
   assert.equal((await api("/api/me")).status, 401);
+});
+
+const copyOf = (html: string, slug = "greeting-card", originMs = 12000) => ({ slug, originMs, files: { html, css: "", js: "" }, active: "html", edits: {}, updatedAt: 1 });
+
+test("lesson copies save, list, refuse stale overwrites, and stay private", async () => {
+  const api = await signedIn("eve@example.com");
+  const first = await api("/api/copies/greeting-card/12000", { method: "PUT", body: { copy: copyOf("<h1>one</h1>"), base: null } });
+  assert.equal(first.status, 200);
+  // Another device that never saw this copy gets it back instead of overwriting it.
+  const stale = await api("/api/copies/greeting-card/12000", { method: "PUT", body: { copy: copyOf("<h1>other</h1>"), base: null } });
+  assert.equal(stale.status, 409);
+  assert.equal(stale.data.copy.files.html, "<h1>one</h1>");
+  assert.equal(stale.data.updatedAt, first.data.updatedAt);
+  const second = await api("/api/copies/greeting-card/12000", { method: "PUT", body: { copy: copyOf("<h1>two</h1>"), base: first.data.updatedAt } });
+  assert.equal(second.status, 200);
+  assert.deepEqual((await api("/api/copies")).data.map((r: any) => [r.copy.slug, r.copy.originMs, r.copy.files.html]), [["greeting-card", 12000, "<h1>two</h1>"]]);
+  // The address and the copy must agree, and it must look like a copy.
+  assert.equal((await api("/api/copies/greeting-card/9000", { method: "PUT", body: { copy: copyOf("x"), base: null } })).status, 400);
+  assert.equal((await api("/api/copies/greeting-card/12000", { method: "PUT", body: { copy: { slug: "greeting-card", originMs: 12000 }, base: null } })).status, 400);
+
+  const other = await signedIn("fin@example.com");
+  assert.equal((await other("/api/copies")).data.length, 0);
+});
+
+test("a sign-in asked for from the course page links back to it", async () => {
+  const api = client();
+  assert.equal((await api("/api/auth/request", { method: "POST", body: { email: "gus@example.com", from: "learn" } })).status, 200);
+  // The simulated email's text lands in a file; the log names it.
+  let text = "";
+  for (let i = 0; i < 40 && !text; i++) {
+    const file = log.match(/To: gus@example\.com[\s\S]*?Text: (\S+\.txt)/)?.[1];
+    if (file) text = readFileSync(file, "utf8");
+    else await new Promise((r) => setTimeout(r, 250));
+  }
+  const link = text.match(/\/auth\/verify\?token=[\w-]{43}&to=learn/)?.[0] ?? "";
+  assert.ok(link, `the emailed link should return to /learn/:\n${text}`);
+  const page = await (await fetch(BASE + link)).text();
+  assert.match(page, /name="to" value="learn"/);
 });
