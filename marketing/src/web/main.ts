@@ -109,7 +109,7 @@ interface Tab {
   lesson?: { slug: string; originMs: number };
 }
 
-const STARTER = `// justrunjs in the browser — every top-level value shows up on the right.
+const STARTER = `// justrunjs in the browser — every top-level value shows up next to its line.
 
 const greeting: string = "hello";
 greeting.toUpperCase();
@@ -555,6 +555,7 @@ const editor = new EditorView({
       editorTheme,
       EditorView.updateListener.of((update) => {
         lessonHooks?.onUpdate(update);
+        if (update.geometryChanged || update.heightChanged) positionResults();
         if (update.docChanged) {
           persistTabs();
           schedule();
@@ -597,26 +598,43 @@ function classify(s: string): ValueKind {
 let lastResults: LineResult[] = [];
 let lastError: string | null = null;
 
-function appendRow(seq: number, text: string, klass: string | null): HTMLSpanElement {
+// Beside the editor, each value sits at its source line's height and scrolls with it.
+// Stacked under the editor (phones) that alignment means nothing, so values list in
+// order instead, still labelled with their line number.
+const stackedLayout = window.matchMedia("(max-width: 767px)");
+
+function appendRow(line: number, text: string, klass: string | null, full = text): void {
   const row = document.createElement("div");
   row.className = "result-row" + (klass ? " " + klass : "");
-  const seqEl = document.createElement("span");
-  seqEl.className = "seq";
-  seqEl.textContent = String(seq);
+  row.dataset.line = String(line);
+  const lineEl = document.createElement("span");
+  lineEl.className = "seq";
+  lineEl.textContent = String(line);
+  lineEl.title = `Line ${line}`;
   const value = document.createElement("span");
   value.className = "value";
   value.textContent = text;
-  row.appendChild(seqEl);
-  row.appendChild(value);
+  value.title = full;
+  row.append(lineEl, value);
   resultsInner.appendChild(row);
-  return value;
 }
 
 function paintResults(): void {
   resultsInner.innerHTML = "";
+  const stacked = stackedLayout.matches;
+  // Aligned rows have one line of room, so long values show their first line; hover has the rest.
+  const shown = (d: string) => (stacked || !d.includes("\n") ? d : d.split("\n")[0] + " …");
 
   if (lastError) {
-    appendRow(1, "error: " + lastError.split("\n")[0], "error");
+    // Babel reports "(line:col)"; runtime errors carry no position, so they sit at the top.
+    const at = lastError.match(/\((\d+):\d+\)/);
+    // The row label already gives the line; drop Babel's internal file name and keep the column.
+    const message = lastError
+      .split("\n")[0]
+      .replace(/^\/?user\.\w+:\s*/, "")
+      .replace(/\s*\(\d+:(\d+)\)/, " (column $1)");
+    appendRow(at ? Number(at[1]) : 1, "error: " + message, "error", lastError);
+    positionResults();
     return;
   }
 
@@ -624,21 +642,71 @@ function paintResults(): void {
   if (lastResults.length === 0 && sourceText.trim().length === 0) {
     const ph = document.createElement("div");
     ph.className = "result-placeholder";
-    ph.textContent = "type some TS / JS — each top-level value shows up here";
+    ph.textContent = "Type some TS or JS. Each top-level value shows up next to its line.";
     resultsInner.appendChild(ph);
+    positionResults();
     return;
   }
 
-  let seq = 1;
-  for (const r of lastResults) {
-    const klass = "v-" + classify(r.display);
-    const lines = r.display.split("\n");
-    for (let i = 0; i < lines.length; i++) {
-      const v = appendRow(seq++, lines[i], i === 0 ? klass : null);
-      if (i === 0) v.title = r.display;
-    }
+  // Several values from one line share its row.
+  const byLine = new Map<number, LineResult[]>();
+  for (const r of lastResults) byLine.set(r.line, [...(byLine.get(r.line) ?? []), r]);
+  for (const [line, rs] of [...byLine].sort((x, y) => x[0] - y[0])) {
+    appendRow(
+      line,
+      rs.map((r) => shown(r.display)).join("  ·  "),
+      "v-" + classify(rs[rs.length - 1].display),
+      rs.map((r) => r.display).join("\n\n"),
+    );
   }
+  positionResults();
 }
+
+/** Move each result row to its line's height in the editor (side-by-side layout only). */
+function positionResults(): void {
+  const aligned = !stackedLayout.matches && getActiveTab().kind !== "playground";
+  resultsEl.classList.toggle("aligned", aligned);
+  const rows = resultsInner.querySelectorAll<HTMLElement>(".result-row");
+  if (!aligned) {
+    resultsInner.style.height = "";
+    rows.forEach((row) => (row.style.top = ""));
+    return;
+  }
+  // Read line positions inside CodeMirror's measure cycle, after real line heights are known
+  // (outside it, the height map can still hold estimates).
+  editor.requestMeasure({
+    key: "results-position",
+    read(view) {
+      const doc = view.state.doc;
+      // The code starts below the tab bar while the results pane starts at the top; measure the gap.
+      const offset =
+        view.documentTop + view.scrollDOM.scrollTop - (resultsInner.getBoundingClientRect().top + resultsEl.scrollTop);
+      const tops = [...rows].map((row) => {
+        const n = Math.min(Math.max(1, Number(row.dataset.line)), doc.lines);
+        return view.lineBlockAt(doc.line(n).from).top + offset;
+      });
+      // Extra room so the pane, which is taller than the editor, can always scroll as far as it.
+      const height = view.contentHeight + Math.max(0, offset) + resultsEl.clientHeight;
+      return { tops, height, scroll: view.scrollDOM.scrollTop };
+    },
+    write({ tops, height, scroll }) {
+      rows.forEach((row, i) => (row.style.top = `${tops[i]}px`));
+      resultsInner.style.height = `${height}px`;
+      resultsEl.scrollTop = scroll;
+    },
+  });
+}
+
+stackedLayout.addEventListener("change", paintResults);
+editor.scrollDOM.addEventListener("scroll", () => {
+  if (resultsEl.classList.contains("aligned")) resultsEl.scrollTop = editor.scrollDOM.scrollTop;
+});
+// The aligned pane doesn't scroll on its own; wheel over it scrolls the editor, which it follows.
+resultsEl.addEventListener("wheel", (e) => {
+  if (!resultsEl.classList.contains("aligned")) return;
+  e.preventDefault();
+  editor.scrollDOM.scrollTop += e.deltaY;
+}, { passive: false });
 
 const transport: Transport = createWorkerTransport();
 
@@ -1004,6 +1072,7 @@ function syncViewToActiveTab(): void {
   panelTabsEl?.classList.toggle("hidden", !isPlay);
   previewPane?.classList.toggle("hidden", !isPlay);
   resultsInner.classList.toggle("hidden", isPlay);
+  positionResults();
   renderPanelTabs();
   // Values belong to whatever tab last rendered; drop them until this tab re-runs.
   lastValues.clear();

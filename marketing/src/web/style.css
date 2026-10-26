@@ -349,6 +349,16 @@ main {
 .v-array    { color: rgb(var(--text-secondary)); }
 .v-function { color: rgb(var(--warning)); }
 
+/* Side-by-side layout: rows are pinned to their source line (see positionResults). */
+#results.aligned { overflow: hidden; }
+#results.aligned #results-inner { position: relative; padding-bottom: 0; }
+#results.aligned .result-row { position: absolute; left: 0; right: 0; }
+#results.aligned .result-row .value {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .result-placeholder {
   color: rgb(var(--text-muted));
   font-style: italic;
