@@ -10,14 +10,14 @@ web
 
 Two audiences, served equally:
 
-- **People writing JavaScript who want instant feedback.** They open justrunjs to try an idea in TypeScript or JavaScript and see every top-level value beside its line, or to build a small HTML/CSS/JS page with a live preview. No install, no project setup.
+- **People writing JavaScript who want instant feedback.** They open crow to try an idea in TypeScript or JavaScript and see every top-level value beside its line, or to build a small HTML/CSS/JS page with a live preview. No install, no project setup.
 - **Students learning to code from the owner's recorded lessons.** Levels are mixed: complete beginners, people who know a little, and working developers learning a specific technique. They mostly watch and practise on a laptop, and sometimes use a phone to watch a lesson or review their work.
 
 The owner is also a user: the one person who records and publishes lessons.
 
 ## Product Purpose
 
-justrunjs is a browser scratchpad and playground that doubles as the owner's teaching platform. A lesson is narration plus every code change, replayed in the real editor: students can pause at any moment, edit the code, run their own version, and return to the instructor's exact state without losing their work. Success is a student following a lesson, experimenting, and coming back, and a developer getting an answer to "what does this evaluate to?" in seconds.
+crow is a browser scratchpad and playground that doubles as the owner's teaching platform. A lesson is narration plus every code change, replayed in the real editor: students can pause at any moment, edit the code, run their own version, and return to the instructor's exact state without losing their work. Success is a student following a lesson, experimenting, and coming back, and a developer getting an answer to "what does this evaluate to?" in seconds.
 
 It is built for the owner to teach with, not as a commercial course marketplace.
 
@@ -46,7 +46,7 @@ The lesson is not a video of an editor; it is the editor. Recorded edits replay 
 
 ## Brand Commitments
 
-- Name: **justrunjs** (lowercase). Part of the owner's "just\*" family of apps.
+- Name: **crow** (lowercase), after a bird that learns by watching others, the way students learn from a lesson. Renamed from justrunjs on 2026-10-26; the domain, repository, folders and saved-data keys still say justrunjs/runjs.
 - One look everywhere, the classroom's: personal, immersive and warm. A warm dark stage, the Recursive typeface (casual mono for code), apricot for the teacher and actions, teal for values and the student's work. Lessons (`/learn/`) always use it.
 - Built on the owner's design system `@codellyson/justui` (tokens, boot script, theme picker). The look ships as the "Classroom" theme (`src/lib/classroom-theme.ts`), the default on its dark stage for the landing page and scratchpad; justui's other themes stay available in the picker.
 

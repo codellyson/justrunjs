@@ -2,7 +2,7 @@ import { BUILT_IN_THEMES, type ThemePlugin } from "@codellyson/justui";
 import { bootTheme } from "@codellyson/justui/boot";
 
 /**
- * justrunjs's own look, the same as the lessons (src/learn/learn.css): a warm dark stage,
+ * crow's own look, the same as the lessons (src/learn/learn.css): a warm dark stage,
  * apricot for the teacher and actions, teal for values and the student's work. The default
  * for the landing page and the scratchpad; justui's themes stay in the picker.
  */

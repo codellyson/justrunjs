@@ -79,7 +79,7 @@ interface Tab {
   lesson?: { slug: string; originMs: number };
 }
 
-const STARTER = `// justrunjs in the browser — every top-level value shows up next to its line.
+const STARTER = `// crow: every top-level value shows up next to its line.
 
 const greeting: string = "hello";
 greeting.toUpperCase();

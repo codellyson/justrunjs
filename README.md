@@ -1,4 +1,6 @@
-# justrunjs
+# crow
+
+A JavaScript scratchpad with inline values, and narrated lessons that replay in a live editor. (Formerly justrunjs; the repository keeps that name.)
 
 A browser JavaScript/TypeScript scratchpad with inline values, an HTML/CSS/JS
 playground with live preview, and recorded lessons you can pause and edit.

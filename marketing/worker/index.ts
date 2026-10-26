@@ -1,4 +1,4 @@
-// justrunjs API: email sign-in (link or typed code), and per-learner storage for lesson
+// crow API (the justrunjs repo): email sign-in (link or typed code), and per-learner storage for lesson
 // copies, scratchpad experiments and lesson progress. Everything else is the static Astro build.
 // Sign-in follows Fillie's worker (personal-projects/fillie/app/worker/index.js).
 
@@ -69,10 +69,10 @@ async function requestSignIn(req: Request, env: Env, url: URL) {
   try {
     await env.EMAIL.send({
       to: email,
-      from: { email: env.MAIL_FROM, name: "justrunjs" },
-      subject: `Your justrunjs sign-in code: ${code}`,
-      text: `Sign in to justrunjs: ${link}\n\nOr type this code: ${code}\n\nThe link and code work for 15 minutes. If you didn't ask for this, ignore this email.`,
-      html: `<p>Sign in to justrunjs:</p><p><a href="${esc(link)}">Sign in</a></p><p>Or type this code: <strong style="font-size:20px;letter-spacing:2px">${code}</strong></p><p>The link and code work for 15 minutes. If you didn't ask for this, ignore this email.</p>`,
+      from: { email: env.MAIL_FROM, name: "crow" },
+      subject: `Your crow sign-in code: ${code}`,
+      text: `Sign in to crow: ${link}\n\nOr type this code: ${code}\n\nThe link and code work for 15 minutes. If you didn't ask for this, ignore this email.`,
+      html: `<p>Sign in to crow:</p><p><a href="${esc(link)}">Sign in</a></p><p>Or type this code: <strong style="font-size:20px;letter-spacing:2px">${code}</strong></p><p>The link and code work for 15 minutes. If you didn't ask for this, ignore this email.</p>`,
     });
   } catch (e) {
     console.error("send_email failed", (e as Error).message);
@@ -110,7 +110,7 @@ async function verifyLink(req: Request, env: Env, url: URL) {
     const token = url.searchParams.get("token") ?? "";
     if (!/^[\w-]{43}$/.test(token)) return page("Sign in", "<p>This sign-in link is broken. Ask for a new one.</p>");
     const to = url.searchParams.get("to") === "learn" ? "learn" : "web";
-    return page("Sign in", `<h1>Sign in to justrunjs</h1><form method="post" action="/auth/verify"><input type="hidden" name="token" value="${esc(token)}"><input type="hidden" name="to" value="${to}"><button>Sign in</button></form>`);
+    return page("Sign in", `<h1>Sign in to crow</h1><form method="post" action="/auth/verify"><input type="hidden" name="token" value="${esc(token)}"><input type="hidden" name="to" value="${to}"><button>Sign in</button></form>`);
   }
   const form = await req.formData();
   const token = String(form.get("token") ?? "");
