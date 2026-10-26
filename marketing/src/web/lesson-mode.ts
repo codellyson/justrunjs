@@ -275,6 +275,47 @@ export function initLessonMode(ctx: LessonContext) {
   };
   // Resume once, as soon as the account's progress for this lesson is known.
   let resumed = false;
+  // The instructor types a character at a time, so most moments in a lesson are mid-keystroke.
+  // When the lesson stops somewhere (pause, scrub, arrow keys, resume), step back to the latest
+  // moment where its script is complete code, and rewind the audio to match.
+  const scriptSlot = (): SlotId => (lesson!.kind === "playground" ? "js" : "main");
+  async function completeAt(ms: number): Promise<number> {
+    const { transpile } = await import("./transpile.ts");
+    const slot = scriptSlot();
+    // "Complete" means it parses; best is also at the end of a finished line, so a pause
+    // shows `nums.map(…);` rather than a valid-but-half-typed `nums.ma`.
+    const check = (t: number) => {
+      const text = seek(lesson!, marks, t).docs.get(slot)?.toString() ?? "";
+      try {
+        transpile(text);
+      } catch {
+        return 0;
+      }
+      return text === "" || text.endsWith("\n") ? 2 : 1;
+    };
+    const atMs = check(ms);
+    if (atMs === 2) return ms;
+    const times = lesson!.events.filter((e) => e.t <= ms && e.type === "change" && e.file === slot).map((e) => e.t);
+    let fallback = atMs ? ms : -1;
+    for (let i = times.length - 1; i >= 0; i--) {
+      if (ms - times[i] > 30_000) break; // nothing clean nearby: settle for what we found
+      if (times[i] === times[i + 1]) continue; // same moment; the later event was already checked
+      const c = check(times[i]);
+      if (c === 2) return times[i];
+      if (c === 1 && fallback < 0) fallback = times[i];
+    }
+    return fallback >= 0 ? fallback : ms;
+  }
+  let snapGen = 0;
+  async function settleAt(ms: number) {
+    const gen = ++snapGen;
+    const clean = await completeAt(ms);
+    // Only if nothing moved on meanwhile (another seek, Play, or leaving the lesson tab).
+    if (gen !== snapGen || clean >= ms - 1 || !audio.paused || !onLessonTab()) return;
+    audio.currentTime = clean / 1000;
+    jump(clean);
+  }
+
   function resume() {
     const p = lesson && !resumed && ctx.account.progressFor(slug!);
     if (!p) return;
@@ -282,6 +323,8 @@ export function initLessonMode(ctx: LessonContext) {
     if (!audio.paused || shownMs > 0 || p.completed || p.positionMs < 3000) return;
     audio.currentTime = p.positionMs / 1000;
     jump(p.positionMs);
+    started = true; // the caption at this point, not "Press Play to start"
+    void settleAt(p.positionMs);
     ctx.showToast(`Picked up where you left off, at ${formatTime(p.positionMs)}.`);
   }
   ctx.account.onChange(() => {
@@ -326,6 +369,7 @@ export function initLessonMode(ctx: LessonContext) {
     audio.onpause = () => {
       saveProgress();
       render();
+      if (onLessonTab() && !ended) void settleAt(audio.currentTime * 1000);
     };
     const files = new Map(lesson.files.map((f) => [f.id, f.content]));
     lessonTab = {
@@ -377,6 +421,7 @@ export function initLessonMode(ctx: LessonContext) {
     }
     audio.currentTime = Number(range.value) / 1000;
     jump(Number(range.value));
+    if (audio.paused) void settleAt(Number(range.value));
   });
   const speed = document.createElement("select");
   speed.className = "lesson-btn";
@@ -475,6 +520,7 @@ export function initLessonMode(ctx: LessonContext) {
       started = true;
       audio.currentTime = ms / 1000;
       jump(ms);
+      if (audio.paused) void settleAt(ms);
     }
   });
 
