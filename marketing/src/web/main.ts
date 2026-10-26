@@ -727,8 +727,10 @@ function appendConsole(level: string, text: string): void {
 }
 
 document.getElementById("console-clear")?.addEventListener("click", clearConsole);
-document.getElementById("console-toggle")?.addEventListener("click", () => {
-  document.getElementById("console-drawer")?.classList.toggle("collapsed");
+// Collapsed by default; the header still shows how many messages arrived.
+document.getElementById("console-toggle")?.addEventListener("click", (e) => {
+  const open = !document.getElementById("console-drawer")?.classList.toggle("collapsed");
+  (e.currentTarget as HTMLElement).setAttribute("aria-expanded", String(open));
 });
 
 /** Route a run/render to the right engine based on the active tab kind. */

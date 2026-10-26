@@ -166,9 +166,9 @@ const LESSONS = course.lessons.map((slug) => {
             title="Live preview"
             sandbox="allow-scripts allow-modals allow-popups allow-forms"
           ></iframe>
-          <div id="console-drawer" class="console-drawer">
+          <div id="console-drawer" class="console-drawer collapsed">
             <div id="console-head" class="console-head">
-              <button id="console-toggle" class="console-toggle" title="Collapse / expand console">
+              <button id="console-toggle" class="console-toggle" title="Show or hide the console" aria-expanded="false" aria-controls="console-log">
                 <span class="console-title">Console</span>
                 <span id="console-count" class="console-count"></span>
               </button>
