@@ -1626,7 +1626,8 @@ async function formatBuffer(): Promise<void> {
       200,
       Math.min(rect.width - 200, rect.right - e.clientX),
     );
-    (mainEl as HTMLElement).style.gridTemplateColumns = `minmax(0, 1fr) 4px ${rightWidth}px`;
+    // A variable rather than gridTemplateColumns, so the phone layout's media query still wins.
+    (mainEl as HTMLElement).style.setProperty("--results-width", `${rightWidth}px`);
   });
   const endDrag = () => {
     document.body.style.cursor = "";

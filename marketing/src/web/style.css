@@ -198,7 +198,7 @@ main {
   display: grid;
   /* Equal 50/50 split between editor and results by default. The splitter
    * can still be dragged at runtime; this just sets the starting ratio. */
-  grid-template-columns: minmax(0, 1fr) 4px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 4px var(--results-width, minmax(0, 1fr));
   min-height: 0;
   min-width: 0;
   height: 100%;
@@ -1000,4 +1000,66 @@ body.hide-line-numbers .cm-gutters { display: none; }
   outline: 2px solid rgb(var(--accent));
   outline-offset: -2px;
   border-radius: 4px;
+}
+
+/* ---------- phones: editor over preview, actions in a bottom bar ---------- */
+
+@media (max-width: 767px) {
+  body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    height: 100dvh;
+  }
+  #sidebar {
+    grid-row: 2;
+    flex-direction: row;
+    justify-content: space-between;
+    padding: 2px 8px calc(2px + env(safe-area-inset-bottom));
+    border-right: 0;
+    border-top: 1px solid rgb(var(--border));
+    overflow-x: auto;
+  }
+  /* Recording happens on a laptop; the status dot only explains itself on hover. */
+  #btn-record,
+  .sidebar-status,
+  .sidebar-spacer { display: none; }
+
+  main {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1.1fr) minmax(0, 1fr);
+  }
+  #splitter { display: none; }
+  #results {
+    border-left: 0;
+    border-top: 1px solid rgb(var(--border));
+  }
+  .console-drawer { height: 96px; }
+  /* Keep Play, time, slider and speed on one row; the slider gives way first. */
+  .lesson-bar { gap: 8px; padding: 6px 8px; }
+  .lesson-seek { flex-basis: 0; min-width: 48px; }
+
+  /* Popovers become sheets above the bottom bar. */
+  .settings-popover,
+  .examples-popover {
+    left: 8px;
+    right: 8px;
+    top: auto;
+    bottom: calc(56px + env(safe-area-inset-bottom));
+    width: auto;
+    max-height: 70dvh;
+  }
+}
+
+/* ---------- touch: 44px targets, no zoom-on-focus ---------- */
+
+@media (pointer: coarse) {
+  .icon-btn { width: 44px; height: 44px; }
+  #editor { grid-template-rows: 44px auto 1fr auto; }
+  .panel-tab { min-height: 44px; padding-inline: 16px; }
+  .tab .tab-close { width: 32px; height: 32px; }
+  .lesson-btn { min-height: 44px; min-width: 44px; }
+  .lesson-seek { min-height: 44px; }
+  /* iOS zooms into any focused field under 16px. */
+  .account-input,
+  .settings-row input[type="number"] { font-size: 16px; }
 }
