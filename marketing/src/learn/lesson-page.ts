@@ -1,7 +1,9 @@
 // The lesson page: narration audio drives a read-only editor that replays every change the
-// instructor made, runs the code as it goes, and shows each value beside its line.
-import { ChangeSet, Compartment, EditorState, StateEffect, StateField, Transaction } from "@codemirror/state";
-import { Decoration, EditorView, WidgetType, lineNumbers, type DecorationSet } from "@codemirror/view";
+// instructor made, runs the code as it goes, and shows each value beside its line. Clicking the
+// code pauses the lesson and opens the student's own copy of it at that moment ("Your turn").
+import { Annotation, ChangeSet, Compartment, EditorState, StateEffect, StateField, Transaction } from "@codemirror/state";
+import { Decoration, EditorView, WidgetType, keymap, lineNumbers, type DecorationSet } from "@codemirror/view";
+import { defaultKeymap, history as undoHistory, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { javascript } from "@codemirror/lang-javascript";
 import { html } from "@codemirror/lang-html";
 import { css } from "@codemirror/lang-css";
@@ -11,6 +13,7 @@ import { checkpoints, completeAt, formatTime, seek, step, type Lesson, type Repl
 import { inlineValuesField, setInlineValues } from "../web/inline-values.ts";
 import { createScratchRunner } from "../web/scratch-runner.ts";
 import { createPreview } from "../web/preview.ts";
+import { findCopy, saveCopy, type LessonCopy } from "./copies.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -56,6 +59,31 @@ const caretField = StateField.define<DecorationSet>({
   provide: (f) => EditorView.decorations.from(f),
 });
 
+/** Marks a transaction that loads a file into the editor, never an edit by the student. */
+const loading = Annotation.define<boolean>();
+
+// The student's changes to the file on screen, since their copy began: shown with a teal
+// underline. Null while the lesson (not a copy) is on screen.
+const setEdits = StateEffect.define<ChangeSet | null>();
+const editsField = StateField.define<ChangeSet | null>({
+  create: () => null,
+  update(edits, tr) {
+    for (const e of tr.effects) if (e.is(setEdits)) edits = e.value;
+    if (edits && tr.docChanged && !tr.annotation(loading)) edits = edits.compose(tr.changes);
+    return edits;
+  },
+});
+const mineMark = Decoration.mark({ class: "lp-mine" });
+const editMarks = EditorView.decorations.compute([editsField], (state) => {
+  const edits = state.field(editsField);
+  if (!edits) return Decoration.none;
+  const ranges: ReturnType<typeof mineMark.range>[] = [];
+  edits.iterChangedRanges((_fA, _tA, fromB, toB) => {
+    if (toB > fromB) ranges.push(mineMark.range(fromB, toB));
+  });
+  return Decoration.set(ranges, true);
+});
+
 // A replayed keystroke briefly breaks the code. While the lesson plays, an error only shows if
 // the code is still broken this long after the last edit; until then the last good values stay.
 const SETTLE_MS = 1200;
@@ -71,6 +99,10 @@ export async function startLesson(slug: string) {
   const speedEl = $<HTMLSelectElement>("lp-speed");
   const ccBtn = $<HTMLButtonElement>("lp-cc");
   const filesEl = $("lp-files");
+  const tryBtn = $<HTMLButtonElement>("lp-try");
+  const savedEl = $("lp-saved");
+  const ytText = $("lp-yt-text");
+  const resetBtn = $<HTMLButtonElement>("lp-reset");
 
   const audio = new Audio();
   let lesson: Lesson;
@@ -82,20 +114,34 @@ export async function startLesson(slug: string) {
   let lastEditAt = 0;
   let editorSlot: SlotId = "main";
   let parse: ((src: string) => unknown) | null = null;
+  /** The student's copy while it's on screen; null while the lesson is. */
+  let copy: LessonCopy | null = null;
 
   const language = new Compartment();
+  const editing = new Compartment();
+  const readOnly = [EditorState.readOnly.of(true), EditorView.editable.of(false)];
   const view = new EditorView({
     parent: $("lp-editor"),
     state: EditorState.create({
       extensions: [
         lineNumbers(),
-        EditorState.readOnly.of(true),
-        EditorView.editable.of(false),
+        editing.of(readOnly),
+        undoHistory(),
+        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         EditorView.lineWrapping,
         language.of([]),
         syntaxHighlighting(highlight),
         inlineValuesField,
         caretField,
+        editsField,
+        editMarks,
+        EditorView.updateListener.of((u) => {
+          if (!copy || !u.docChanged || u.transactions.every((t) => t.annotation(loading))) return;
+          copy.files[editorSlot] = u.state.doc.toString();
+          copy.edits[editorSlot] = u.state.field(editsField)?.toJSON();
+          saveSoon();
+          runSoon();
+        }),
         EditorView.theme({ "&": { backgroundColor: "transparent" } }, { dark: true }),
       ],
     }),
@@ -103,7 +149,7 @@ export async function startLesson(slug: string) {
 
   const playing = () => !audio.paused && !ended;
   const shownSlot = (): SlotId => (lesson.kind === "playground" ? s.active : "main");
-  const docOf = (id: SlotId) => s.docs.get(id)?.toString() ?? "";
+  const docOf = (id: SlotId) => (copy ? copy.files[id] ?? "" : s.docs.get(id)?.toString() ?? "");
 
   // ---------- running the code ----------
 
@@ -180,12 +226,20 @@ export async function startLesson(slug: string) {
     editorSlot = shownSlot();
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: docOf(editorSlot) },
-      effects: [language.reconfigure(languageFor(editorSlot)), setInlineValues.of([])],
-      annotations: Transaction.addToHistory.of(false),
+      effects: [language.reconfigure(languageFor(editorSlot)), setInlineValues.of([]), setEdits.of(null)],
+      annotations: [loading.of(true), Transaction.addToHistory.of(false)],
     });
-    for (const tab of filesEl.querySelectorAll<HTMLElement>("[data-file]")) tab.classList.toggle("on", tab.dataset.file === editorSlot);
+    paintFiles();
     if (editorSlot === "js") showJsValues();
     caretTo(editorSlot);
+  }
+
+  function paintFiles() {
+    for (const tab of filesEl.querySelectorAll<HTMLButtonElement>("[data-file]")) {
+      tab.classList.toggle("on", tab.dataset.file === editorSlot);
+      tab.setAttribute("aria-pressed", String(tab.dataset.file === editorSlot));
+      tab.disabled = !copy; // during the lesson the instructor picks the file
+    }
   }
 
   /** Show the lesson as it was at `ms`, rebuilt from the nearest checkpoint. */
@@ -229,9 +283,126 @@ export async function startLesson(slug: string) {
     const gen = ++settleGen;
     const clean = parse ? completeAt(lesson, marks, ms, parse) : ms;
     await Promise.resolve(); // a Play click in the same task wins
-    if (gen !== settleGen || clean >= ms - 1 || !audio.paused) return;
+    if (gen !== settleGen || clean >= ms - 1 || !audio.paused || copy) return;
     audio.currentTime = clean / 1000;
     jump(clean);
+  }
+
+  // ---------- your turn: the student's copy ----------
+
+  let saveTimer: ReturnType<typeof setTimeout> | undefined;
+  function saveNow() {
+    clearTimeout(saveTimer);
+    if (!copy) return;
+    savedEl.textContent = saveCopy(copy) ? "Saved on this device" : "Couldn't save on this device: your browser's storage is full or blocked";
+  }
+  function saveSoon() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveNow, 400);
+  }
+
+  /** Put one of the copy's files in the editor, its changes marked; `pos` places the caret (default: the end). */
+  function showCopyFile(slot: SlotId, pos?: number) {
+    if (!copy) return;
+    editorSlot = slot;
+    copy.active = slot;
+    const text = copy.files[slot] ?? "";
+    let edits = ChangeSet.empty(text.length);
+    try {
+      if (copy.edits[slot]) edits = ChangeSet.fromJSON(copy.edits[slot]);
+    } catch {
+      /* unreadable marks: show the text without them */
+    }
+    if (edits.newLength !== text.length) edits = ChangeSet.empty(text.length);
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: text },
+      selection: { anchor: Math.min(pos ?? text.length, text.length) }, // no click position: at the end
+      effects: [language.reconfigure(languageFor(slot)), setInlineValues.of([]), setEdits.of(edits), setCaret.of(null)],
+      annotations: [loading.of(true), Transaction.addToHistory.of(false)],
+    });
+    paintFiles();
+    if (slot === "js") showJsValues();
+  }
+
+  /**
+   * Pause the lesson at the last complete code and open the student's copy from there.
+   * `origin` reopens the copy that started at that moment (from the page address).
+   */
+  function enterCopy(pos?: number, origin?: number) {
+    if (copy) return;
+    settleGen++; // a pending step-back would otherwise replace the copy with the lesson
+    const at = ended ? lesson.durationMs : Math.min(audio.currentTime * 1000, lesson.durationMs);
+    audio.pause();
+    origin ??= Math.round(parse ? completeAt(lesson, marks, at, parse) : at);
+    s = seek(lesson, marks, origin);
+    shownMs = origin;
+    audio.currentTime = origin / 1000;
+    const existing = findCopy(slug, origin);
+    copy = existing ?? {
+      slug,
+      originMs: origin,
+      files: Object.fromEntries([...s.docs].map(([id, doc]) => [id, doc.toString()])),
+      active: shownSlot(),
+      edits: {},
+      updatedAt: 0,
+    };
+    savedEl.textContent = existing ? "Saved on this device" : "Your changes save on this device";
+    ytText.textContent = `I've paused at ${formatTime(origin)}. Change anything you like; my version stays exactly as it was.`;
+    root.classList.add("is-yours");
+    started = true;
+    // The address names the copy, so a reload (or a link from the course page) comes back to it.
+    history.replaceState(null, "", `?copy=${origin}`);
+    view.dispatch({ effects: editing.reconfigure([]) });
+    showCopyFile(lesson.kind === "playground" ? copy.active : "main", pos);
+    view.focus();
+    runSoon(0);
+  }
+
+  /** Back to the lesson where the copy began; the copy stays saved. */
+  function leaveCopy() {
+    if (!copy) return 0;
+    saveNow();
+    const origin = copy.originMs;
+    copy = null;
+    resetArmed = false;
+    resetBtn.textContent = "Reset to my code";
+    root.classList.remove("is-yours");
+    history.replaceState(null, "", location.pathname);
+    view.dispatch({ effects: editing.reconfigure(readOnly) });
+    return origin;
+  }
+
+  function continueLesson() {
+    const origin = leaveCopy();
+    const fromStart = origin >= lesson.durationMs - 250; // a copy of the finished lesson
+    seekTo(fromStart ? 0 : origin);
+    void audio.play().catch((e) => (caption.textContent = `The audio couldn't play: ${e.message}`));
+  }
+
+  // Resetting throws away the student's changes, so it takes a second click to confirm.
+  let resetArmed = false;
+  let resetTimer: ReturnType<typeof setTimeout> | undefined;
+  function resetCopy() {
+    if (!copy) return;
+    if (!resetArmed) {
+      resetArmed = true;
+      resetBtn.textContent = "Click again to lose your changes";
+      clearTimeout(resetTimer);
+      resetTimer = setTimeout(() => {
+        resetArmed = false;
+        resetBtn.textContent = "Reset to my code";
+      }, 4000);
+      return;
+    }
+    resetArmed = false;
+    resetBtn.textContent = "Reset to my code";
+    const docs = seek(lesson, marks, copy.originMs).docs;
+    copy.files = Object.fromEntries([...docs].map(([id, doc]) => [id, doc.toString()]));
+    copy.edits = {};
+    showCopyFile(copy.active);
+    saveNow();
+    runSoon(0);
+    view.focus();
   }
 
   // ---------- the player ----------
@@ -262,8 +433,8 @@ export async function startLesson(slug: string) {
   }
 
   function paint() {
-    const ms = Math.min(audio.currentTime * 1000, lesson.durationMs);
-    timeEl.textContent = `${formatTime(ms)} / ${formatTime(lesson.durationMs)}`;
+    const ms = copy ? copy.originMs : Math.min(audio.currentTime * 1000, lesson.durationMs);
+    timeEl.textContent = `${copy ? "Paused at " : ""}${formatTime(ms)} / ${formatTime(lesson.durationMs)}`;
     if (document.activeElement !== seekEl) seekEl.value = String(ms);
     for (const seg of segments) {
       const share = Math.min(1, Math.max(0, (ms - seg.from) / (seg.to - seg.from)));
@@ -273,16 +444,17 @@ export async function startLesson(slug: string) {
     if (caption.textContent !== line) caption.textContent = line;
     const isPlaying = playing();
     root.classList.toggle("is-playing", isPlaying);
-    playBtn.setAttribute("aria-label", isPlaying ? "Pause" : ended ? "Watch again" : "Play");
+    playBtn.setAttribute("aria-label", copy ? "Continue the lesson" : isPlaying ? "Pause" : ended ? "Watch again" : "Play");
   }
 
   function tick() {
-    if (!audio.paused) advance(audio.currentTime * 1000);
+    if (!audio.paused && !copy) advance(audio.currentTime * 1000);
     paint();
     requestAnimationFrame(tick);
   }
 
   function seekTo(ms: number) {
+    leaveCopy();
     started = true;
     ended = false;
     audio.currentTime = ms / 1000;
@@ -291,6 +463,7 @@ export async function startLesson(slug: string) {
   }
 
   function togglePlay() {
+    if (copy) return continueLesson();
     if (ended) seekTo(0);
     if (audio.paused) void audio.play().catch((e) => (caption.textContent = `The audio couldn't play: ${e.message}`));
     else audio.pause();
@@ -336,6 +509,26 @@ export async function startLesson(slug: string) {
   };
 
   playBtn.disabled = false;
+  tryBtn.disabled = false;
+  tryBtn.addEventListener("click", () => enterCopy());
+  // Clicking into the lesson's code is how a student takes over; the caret lands where they clicked.
+  view.dom.addEventListener("mousedown", (e) => {
+    if (copy || (e.target as HTMLElement).closest(".cm-value-toggle, .cm-gutters")) return;
+    e.preventDefault();
+    enterCopy(view.posAtCoords({ x: e.clientX, y: e.clientY }) ?? undefined);
+  });
+  $("lp-continue").addEventListener("click", continueLesson);
+  resetBtn.addEventListener("click", resetCopy);
+  for (const tab of filesEl.querySelectorAll<HTMLButtonElement>("[data-file]")) {
+    tab.addEventListener("click", () => {
+      showCopyFile(tab.dataset.file as SlotId);
+      view.focus();
+    });
+  }
+  addEventListener("pagehide", saveNow);
+  const linked = new URLSearchParams(location.search).get("copy");
+  if (linked && findCopy(slug, Number(linked))) enterCopy(undefined, Number(linked));
+  else if (location.search) history.replaceState(null, "", location.pathname);
   playBtn.addEventListener("click", togglePlay);
   seekEl.addEventListener("input", () => seekTo(Number(seekEl.value)));
   speedEl.addEventListener("change", () => (audio.playbackRate = Number(speedEl.value)));
@@ -347,7 +540,7 @@ export async function startLesson(slug: string) {
   // Space plays or pauses and ←/→ jump 5s, unless a control that uses those keys has focus.
   window.addEventListener("keydown", (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
-    if ((e.target as HTMLElement).closest("input, select, textarea, button")) return;
+    if ((e.target as HTMLElement).closest("input, select, textarea, button, [contenteditable]")) return;
     if (e.key === " ") {
       e.preventDefault();
       togglePlay();
