@@ -496,9 +496,12 @@ main {
   padding: 2px 8px;
   cursor: pointer;
 }
+.save-short { display: none; }
 @media (max-width: 767px) {
-  /* Too little room beside the tabs; only a failure (with Retry) earns the space. */
-  .save-status:not(.failed) { display: none; }
+  /* Little room beside the tabs: the short wording. */
+  .save-status { padding: 0 8px; }
+  .save-long { display: none; }
+  .save-short { display: inline; }
 }
 
 .tab-new {
@@ -977,8 +980,8 @@ a.example-item { color: inherit; text-decoration: none; }
 .toast {
   position: fixed;
   left: 50%;
-  /* Top of the window, clear of the lesson bar and its Back to lesson button. */
-  top: 16px;
+  /* Below the tab bar, clear of the lesson bar and its Back to lesson button. */
+  top: 52px;
   transform: translateX(-50%);
   background: rgb(var(--bg-secondary));
   border: 1px solid rgb(var(--border));
@@ -1168,4 +1171,26 @@ select.lesson-btn option { background: rgb(var(--bg-secondary)); color: rgb(var(
   /* iOS zooms into any focused field under 16px. */
   .account-input,
   .settings-row input[type="number"] { font-size: 16px; }
+}
+
+/* ---------- keyboard shortcuts (settings) ---------- */
+
+.shortcut-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  margin: 4px 0 0;
+  padding: 0 14px;
+  font-size: 12px;
+  color: rgb(var(--text-secondary));
+}
+.shortcut-list dt { display: flex; gap: 3px; }
+.shortcut-list dd { margin: 0; }
+.shortcut-list kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 1px 5px;
+  border: 1px solid rgb(var(--border));
+  border-radius: 4px;
+  color: rgb(var(--text-primary));
 }

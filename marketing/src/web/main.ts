@@ -286,6 +286,7 @@ type StatusState = "ready" | "running" | "ok" | "error";
 const STATES: StatusState[] = ["ready", "running", "ok", "error"];
 function setStatus(text: string, state?: StatusState): void {
   sidebarStatusEl.title = text;
+  sidebarStatusEl.setAttribute("aria-label", `Status: ${text}`);
   for (const s of STATES) sidebarStatusEl.classList.remove(s);
   if (state) sidebarStatusEl.classList.add(state);
 }
@@ -1265,6 +1266,7 @@ function toggleTabLang(id: string): void {
   }
   renderTabs();
   persistTabs();
+  showToast(`${t.name} is now ${t.language === "typescript" ? "TypeScript" : "JavaScript"}. Click the badge again to switch back.`);
 }
 
 // --- playground sub-tab bar (HTML / CSS / JS) ---
@@ -1391,7 +1393,13 @@ function renderSaveStatus(): void {
   el.classList.toggle("failed", !!s?.retry);
   if (!s) return;
   el.title = s.reason ?? "";
-  el.append(s.text);
+  const long = document.createElement("span");
+  long.className = "save-long";
+  long.textContent = s.text;
+  const short = document.createElement("span");
+  short.className = "save-short";
+  short.textContent = s.short;
+  el.append(long, short);
   if (s.retry) {
     const retry = document.createElement("button");
     retry.type = "button";

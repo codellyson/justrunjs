@@ -235,13 +235,14 @@ export function initAccount(ctx: AccountContext) {
   return {
     onPersist,
     /** Where this tab's work lives, for the status line in the tab bar. */
-    statusFor(tab: LessonTab): { text: string; reason?: string; retry?: () => void } {
+    /** `short` is the phone version, where the tab bar has little room. */
+    statusFor(tab: LessonTab): { text: string; short: string; reason?: string; retry?: () => void } {
       const t = tab as SyncedTab;
-      if (!isExperiment(t)) return { text: "On this device", reason: "Saved in this browser. Experiments from lessons also save to your account when you sign in." };
-      if (!email) return { text: "On this device · sign in to keep it everywhere" };
+      if (!isExperiment(t)) return { text: "On this device", short: "On device", reason: "Saved in this browser. Experiments from lessons also save to your account when you sign in." };
+      if (!email) return { text: "On this device · sign in to keep it everywhere", short: "On device" };
       const s = status.get(t.id);
-      if (s === "error") return { text: "Couldn't save to your account", reason: `${failures.get(t.id)?.reason ?? ""} Your work is safe on this device.`.trim(), retry: () => retry(t) };
-      return { text: s === "saved" ? "In your account" : "Saving…" };
+      if (s === "error") return { text: "Couldn't save to your account", short: "Not saved", reason: `${failures.get(t.id)?.reason ?? ""} Your work is safe on this device.`.trim(), retry: () => retry(t) };
+      return s === "saved" ? { text: "In your account", short: "Saved" } : { text: "Saving…", short: "Saving…" };
     },
     /** Ask before a closed experiment is removed from the account too. */
     async onClose(tab: LessonTab) {

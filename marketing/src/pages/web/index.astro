@@ -20,7 +20,7 @@ const LESSONS = readdirSync(lessonsDir)
   .filter((f) => f.endsWith(".json"))
   .map((f) => {
     const l = JSON.parse(readFileSync(`${lessonsDir}/${f}`, "utf8"));
-    const secs = Math.round(l.durationMs / 1000);
+    const secs = Math.floor(l.durationMs / 1000); // same as the player's clock
     return { slug: f.slice(0, -5), title: l.title, kind: l.kind, language: l.language, length: `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}` };
   })
   .sort((a, b) => a.title.localeCompare(b.title));
@@ -316,6 +316,16 @@ const LESSONS = readdirSync(lessonsDir)
           <span>Lesson recording (for authors)</span>
           <input type="checkbox" id="opt-author" />
         </label>
+      </div>
+      <div class="settings-section">
+        <div class="settings-title">Keyboard</div>
+        <dl class="shortcut-list">
+          <dt><kbd>⌘</kbd><kbd>↵</kbd></dt><dd>Run the code (Ctrl+Enter on Windows)</dd>
+          <dt><kbd>Space</kbd></dt><dd>Play or pause a lesson</dd>
+          <dt><kbd>←</kbd><kbd>→</kbd></dt><dd>Jump 5 seconds in a lesson</dd>
+          <dt><kbd>Esc</kbd></dt><dd>Close a panel</dd>
+          <dt><kbd>Delete</kbd></dt><dd>Close the focused tab</dd>
+        </dl>
       </div>
     </div>
 

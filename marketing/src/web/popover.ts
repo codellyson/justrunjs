@@ -15,7 +15,14 @@ export function wirePopover(button: HTMLElement, panel: HTMLElement) {
   function open() {
     panel.classList.remove("hidden");
     button.setAttribute("aria-expanded", "true");
-    panel.querySelector<HTMLElement>("input, select, button:not(:disabled), [href]")?.focus();
+    // Land on a field if there is one; otherwise on the panel, never on a button that acts
+    // on Enter (the account panel's first button is Sign out).
+    const field = panel.querySelector<HTMLElement>("input:not([type]), input[type=email], input[type=text]");
+    if (field) field.focus();
+    else {
+      panel.tabIndex = -1;
+      panel.focus();
+    }
   }
 
   button.addEventListener("click", (e) => {
