@@ -20,6 +20,10 @@ export interface Lesson {
   active: SlotId;
   files: { id: SlotId; content: string }[];
   events: LessonEvent[];
+  /** Narration text; each line shows from `t` until the next one starts. */
+  captions?: { t: number; text: string }[];
+  /** What to try once the lesson ends, shown on the end card. */
+  outro?: string;
 }
 
 /** Replay state; `next` is the index of the first event not yet applied. Text is immutable, so copies are cheap. */

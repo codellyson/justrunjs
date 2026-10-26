@@ -195,7 +195,7 @@ export function initLessonMode(ctx: LessonContext) {
   /** Rebuild the lesson tab at `ms` from the nearest checkpoint. */
   function jump(ms: number) {
     s = seek(lesson!, marks, ms);
-    shownMs = ms;
+    shownMs = Math.min(ms, lesson!.durationMs); // the end arrives as Infinity
     for (const [id, doc] of s.docs) writeSlot(lessonTab!, id, doc.toString());
     if (lessonTab!.kind === "playground") lessonTab!.activePanel = s.active as Panel;
     if (!onLessonTab()) return;
@@ -225,10 +225,11 @@ export function initLessonMode(ctx: LessonContext) {
       } else if (e.type === "change") ctx.editor.dispatch({ changes: ChangeSet.fromJSON(e.changes), ...editorQuiet });
       else select(e.anchor, e.head);
     }
-    shownMs = ms;
+    shownMs = Math.min(ms, lesson!.durationMs); // the end arrives as Infinity
   }
 
-  function fork(update: ViewUpdate) {
+  /** Copy the lesson tab into a student's experiment. `edited` is the editor text when an edit triggered it. */
+  function fork(edited?: string, message = "Your edit started an experiment. The lesson is unchanged.") {
     audio.pause();
     shownMs = Math.round(shownMs);
     const from = lessonTab!;
@@ -239,14 +240,14 @@ export function initLessonMode(ctx: LessonContext) {
       lessonSource: undefined,
       lesson: { slug: slug!, originMs: shownMs },
     };
-    writeSlot(exp, shownSlot(from), update.state.doc.toString());
-    // The edit is already in the editor, so only re-point the app; the lesson tab keeps the teacher's text.
+    if (edited !== undefined) writeSlot(exp, shownSlot(from), edited);
+    // The editor already shows this text, so only re-point the app; the lesson tab keeps the teacher's text.
     ctx.tabs().push(exp);
     ctx.setActiveId(exp.id);
     queueMicrotask(() => {
       ctx.refreshChrome();
       render();
-      ctx.showToast("Your edit started an experiment. The lesson is unchanged.");
+      ctx.showToast(message);
     });
   }
 
@@ -314,8 +315,14 @@ export function initLessonMode(ctx: LessonContext) {
     audio.onended = () => {
       advance(Infinity);
       saveProgress(true);
+      ended = true;
+      render();
     };
-    audio.onplay = render;
+    audio.onplay = () => {
+      started = true;
+      ended = false;
+      render();
+    };
     audio.onpause = () => {
       saveProgress();
       render();
@@ -355,10 +362,19 @@ export function initLessonMode(ctx: LessonContext) {
   const text = (value: string, className = "lesson-text") => Object.assign(document.createElement("span"), { className, textContent: value });
 
   const clock = text("", "lesson-time");
+  const INTRO = "Press Play to start. Pause anytime and edit the code: your changes become your own copy.";
+  const caption = text("", "lesson-caption");
+  let started = false; // the intro shows until the lesson is played or scrubbed
+  let ended = false;
   const range = Object.assign(document.createElement("input"), { type: "range", min: "0", step: "100", className: "lesson-seek" });
   range.setAttribute("aria-label", "Lesson position");
   range.addEventListener("input", () => {
     if (!onLessonTab()) backToLesson();
+    started = true;
+    if (ended) {
+      ended = false;
+      render();
+    }
     audio.currentTime = Number(range.value) / 1000;
     jump(Number(range.value));
   });
@@ -378,6 +394,28 @@ export function initLessonMode(ctx: LessonContext) {
     const ms = onLessonTab() ? audio.currentTime * 1000 : t.lesson?.slug === slug ? t.lesson!.originMs : shownMs;
     clock.textContent = `${formatTime(ms)} / ${formatTime(lesson.durationMs)}`;
     if (document.activeElement !== range) range.value = String(ms);
+    const line = !started ? INTRO : currentCaption(ms);
+    if (caption.textContent !== line) caption.textContent = line;
+    caption.classList.toggle("lesson-intro", !started);
+  }
+
+  function currentCaption(ms: number) {
+    let line = "";
+    for (const c of lesson?.captions ?? []) {
+      if (c.t > ms) break;
+      line = c.text;
+    }
+    return line;
+  }
+
+  /** The student's most recent experiment from this lesson, if any. */
+  const latestExperiment = () => ctx.tabs().filter((t) => t.lesson?.slug === slug).at(-1);
+
+  function replay() {
+    ended = false;
+    audio.currentTime = 0;
+    jump(0);
+    void audio.play().catch((e) => ctx.showToast(`Could not play audio: ${e.message}`));
   }
 
   function render() {
@@ -393,11 +431,24 @@ export function initLessonMode(ctx: LessonContext) {
         button(rec.done.saved ? "Saved ✓" : "Save lesson", saveRecording),
         button("Discard", discardRecording),
       );
+    } else if (lesson && onLessonTab() && ended) {
+      const exp = latestExperiment();
+      items.push(
+        text("Lesson complete.", "lesson-done"),
+        ...(lesson.outro ? [text(lesson.outro, "lesson-caption")] : []),
+        button("↺ Replay", replay),
+        exp
+          ? button("Open your experiment", () => ctx.activateTab(exp.id))
+          : button("Start experimenting", () => fork(undefined, "This copy is yours. Change anything; the lesson is unchanged.")),
+      );
     } else if (lesson) {
       const t = ctx.activeTab();
       const mine = t.lesson?.slug === slug;
+      const exp = onLessonTab() ? latestExperiment() : undefined;
       range.max = String(lesson.durationMs);
+      if (onLessonTab()) items.push(caption);
       items.push(button(onLessonTab() && !audio.paused ? "❚❚ Pause" : "▶ Play", togglePlay), clock, range, speed);
+      if (exp) items.push(button("Open your experiment", () => ctx.activateTab(exp.id)));
       if (mine) {
         items.push(
           text(`Your experiment · from ${formatTime(t.lesson!.originMs)}`, "lesson-mode"),
@@ -419,7 +470,7 @@ export function initLessonMode(ctx: LessonContext) {
     onUpdate(update: ViewUpdate) {
       const tr = update.transactions;
       if (tr.some((t) => t.annotation(slotLoad) || t.annotation(replayed))) return;
-      if (onLessonTab() && update.docChanged) return fork(update);
+      if (onLessonTab() && update.docChanged) return fork(update.state.doc.toString());
       if (update.docChanged) record({ type: "change", file: shownSlot(ctx.activeTab()), changes: update.changes.toJSON() });
       else if (update.selectionSet) {
         const { anchor, head } = update.state.selection.main;

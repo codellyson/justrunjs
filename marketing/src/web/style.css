@@ -969,6 +969,17 @@ body.hide-line-numbers .cm-gutters { display: none; }
 .lesson-btn:hover { border-color: rgb(var(--text-muted)); }
 
 .lesson-time { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+/* Narration line (or the intro before Play), across the top of the bar. */
+.lesson-caption {
+  flex-basis: 100%;
+  color: rgb(var(--text-primary));
+  font-size: 13px;
+  line-height: 1.45;
+  min-height: 1.45em;
+}
+.lesson-caption.lesson-intro { color: rgb(var(--text-secondary)); }
+.lesson-caption:empty { display: none; }
+.lesson-done { font-weight: 600; color: rgb(var(--text-primary)); }
 .lesson-seek { flex: 1 1 120px; min-width: 80px; accent-color: rgb(var(--accent)); }
 .lesson-mode { color: rgb(var(--accent)); }
 .lesson-dot {
