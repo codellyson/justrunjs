@@ -216,6 +216,13 @@ main {
   grid-template-rows: 40px auto 1fr auto;
 }
 
+/* Pinned rows: #panel-tabs is display:none on scratchpad tabs, and auto-placement
+ * would then shift the editor into the panel row and the lesson bar into 1fr. */
+#tabs { grid-row: 1; }
+#panel-tabs { grid-row: 2; }
+#editor-host { grid-row: 3; }
+#lesson-bar { grid-row: 4; }
+
 #editor-host {
   position: relative;
   min-height: 0;
