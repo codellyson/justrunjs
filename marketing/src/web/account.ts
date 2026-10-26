@@ -1,6 +1,7 @@
 // Learner accounts: email sign-in, experiments synced to the account, lesson progress.
 // Guests keep everything on this device; signing in uploads their experiments once.
 import type { LessonTab } from "./lesson-mode.ts";
+import { wirePopover } from "./popover.ts";
 
 type SyncedTab = LessonTab & { syncedAt?: number };
 type Status = "local" | "syncing" | "saved" | "error";
@@ -176,15 +177,7 @@ export function initAccount(ctx: AccountContext) {
     render();
   }
 
-  button.addEventListener("click", (e) => {
-    e.stopPropagation();
-    panel.classList.toggle("hidden");
-    panel.querySelector("input")?.focus();
-  });
-  document.addEventListener("click", (e) => {
-    const target = e.target as Node;
-    if (!panel.classList.contains("hidden") && !panel.contains(target) && !button.contains(target)) panel.classList.add("hidden");
-  });
+  wirePopover(button, panel);
 
   void call<{ email?: string }>("/api/me")
     .then(async (res) => {

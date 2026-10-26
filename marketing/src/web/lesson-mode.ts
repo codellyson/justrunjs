@@ -382,6 +382,7 @@ export function initLessonMode(ctx: LessonContext) {
 
   function render() {
     $("btn-record").classList.toggle("recording", !!rec && !rec.done);
+    $("btn-record").setAttribute("aria-pressed", String(!!rec && !rec.done));
     $("btn-record").title = rec && !rec.done ? "Stop recording" : "Record a lesson";
     const items: Node[] = [];
     if (rec && !rec.done) {

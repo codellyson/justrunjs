@@ -40,6 +40,7 @@ import {
 } from "./share.ts";
 import { initLessonMode, slotLoadAnnotations } from "./lesson-mode.ts";
 import { initAccount } from "./account.ts";
+import { wirePopover } from "./popover.ts";
 
 interface LineResult {
   line: number;
@@ -427,6 +428,48 @@ document.documentElement.style.setProperty(
   "--editor-font-size",
   fontSize + "px",
 );
+
+// Several justui themes ship text under WCAG AA (muted as low as 2.1:1; Solarized light's
+// primary text fails on its secondary background). After a theme is applied, push each
+// text colour toward black (light themes) or white (dark themes) just enough to reach 4.5:1
+// on both backgrounds, so the theme keeps its tint. Language badges get the same treatment
+// through --lang-ink-share, since their colours are fixed across themes.
+const LANG_BADGES = [[71, 137, 209], [224, 179, 40], [149, 123, 246]]; // TS, JS, playground
+function ensureReadableText(): void {
+  const root = document.documentElement;
+  const css = getComputedStyle(root);
+  const rgb = (name: string) => css.getPropertyValue(name).trim().split(/\s+/).map(Number);
+  const lum = (c: number[]) => {
+    const [r, g, b] = c.map((v) => (v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const ratio = (a: number[], b: number[]) => {
+    const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  const mix = (a: number[], b: number[], t: number) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
+  const backgrounds = [rgb("--bg"), rgb("--bg-secondary")];
+  if (backgrounds.some((c) => c.length !== 3 || c.some(Number.isNaN))) return;
+  const extreme = lum(backgrounds[0]) > 0.4 ? [0, 0, 0] : [255, 255, 255];
+  // Smallest step toward the extreme (0..20 × 5%) at which every check passes.
+  const firstPassing = (passes: (t: number) => boolean) => {
+    for (let i = 0; i <= 20; i++) if (passes(i / 20)) return i / 20;
+    return 1;
+  };
+  for (const name of ["--text-primary", "--text-secondary", "--text-muted"]) {
+    const base = rgb(name);
+    if (base.length !== 3 || base.some(Number.isNaN)) continue;
+    const t = firstPassing((t) => backgrounds.every((bg) => ratio(mix(base, extreme, t), bg) >= 4.5));
+    root.style.setProperty(name, mix(base, extreme, t).join(" "));
+  }
+  // A badge is its language colour on a 16% tint of itself, over either background.
+  const t = firstPassing((t) =>
+    LANG_BADGES.every((lang) => backgrounds.every((bg) => ratio(mix(lang, extreme, t), mix(bg, lang, 0.16)) >= 4.5)),
+  );
+  root.style.setProperty("--lang-ink-target", extreme.join(" "));
+  root.style.setProperty("--lang-ink-share", `${Math.round((1 - t) * 100)}%`);
+}
+ensureReadableText();
 
 function currentMode(): Mode {
   return document.documentElement.dataset.themeMode === "light"
@@ -1126,16 +1169,40 @@ function switchPanel(p: PanelId): void {
   persistTabs();
 }
 
+/** Keyboard on a file tab: arrows/Home/End move focus, Enter/Space opens, Delete closes. */
+function onTabKey(e: KeyboardEvent, id: string): void {
+  const all = [...(tabsEl?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [])];
+  const i = all.indexOf(e.currentTarget as HTMLElement);
+  const moveTo = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: all.length - 1 }[e.key];
+  if (moveTo !== undefined) {
+    e.preventDefault();
+    all[(moveTo + all.length) % all.length]?.focus();
+  } else if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault();
+    activateTab(id);
+  } else if (e.key === "Delete" || e.key === "Backspace") {
+    e.preventDefault();
+    closeTab(id);
+  }
+}
+
 function renderTabs(): void {
   if (!tabsEl) return;
+  // Re-rendering replaces the tab elements; keep keyboard focus on the strip if it was there.
+  const hadFocus = tabsEl.contains(document.activeElement);
   tabsEl.innerHTML = "";
   for (const t of tabs) {
+    const selected = t.id === activeId;
     const el = document.createElement("div");
-    el.className = "tab" + (t.id === activeId ? " active" : "");
+    el.className = "tab" + (selected ? " active" : "");
     el.dataset.id = t.id;
     el.setAttribute("role", "tab");
+    el.setAttribute("aria-selected", String(selected));
+    el.tabIndex = selected ? 0 : -1;
+    el.addEventListener("keydown", (e) => onTabKey(e, t.id));
 
     const lang = document.createElement("button");
+    lang.tabIndex = -1;
     if (t.kind === "playground") {
       lang.className = "tab-lang lang-play";
       lang.textContent = "</>";
@@ -1156,22 +1223,27 @@ function renderTabs(): void {
     name.className = "tab-name";
     name.textContent = t.name;
 
-    const close = document.createElement("span");
-    close.className = "tab-close";
-    close.textContent = "×";
-    close.title = "Close";
-    close.addEventListener("click", (e) => {
-      e.stopPropagation();
-      closeTab(t.id);
-    });
-
     el.addEventListener("click", () => activateTab(t.id));
 
     el.appendChild(lang);
     el.appendChild(name);
-    el.appendChild(close);
+    // A lesson tab can't be closed, so it gets no close control.
+    if (!t.lessonSource) {
+      const close = document.createElement("button");
+      close.className = "tab-close";
+      close.textContent = "×";
+      close.tabIndex = -1;
+      close.title = "Close (Delete)";
+      close.setAttribute("aria-label", `Close ${t.name}`);
+      close.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeTab(t.id);
+      });
+      el.appendChild(close);
+    }
     tabsEl.appendChild(el);
   }
+  if (hadFocus) tabsEl.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
 
   const addTs = document.createElement("button");
   addTs.className = "tab-add ts";
@@ -1253,17 +1325,7 @@ const examplesBtn = document.getElementById("btn-examples");
 const examplesPopover = document.getElementById("examples-popover");
 
 if (examplesBtn && examplesPopover) {
-  examplesBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    examplesPopover.classList.toggle("hidden");
-  });
-  document.addEventListener("click", (e) => {
-    if (examplesPopover.classList.contains("hidden")) return;
-    const target = e.target as Node | null;
-    if (!target) return;
-    if (examplesPopover.contains(target) || examplesBtn.contains(target)) return;
-    examplesPopover.classList.add("hidden");
-  });
+  const examples = wirePopover(examplesBtn, examplesPopover);
 
   for (const item of examplesPopover.querySelectorAll<HTMLElement>(
     ".example-item",
@@ -1283,7 +1345,8 @@ if (examplesBtn && examplesPopover) {
         const ext = ex.language === "typescript" ? "ts" : "js";
         openBinTab(`${ex.id}.${ext}`, ex.language, ex.code);
       }
-      examplesPopover.classList.add("hidden");
+      examples.close(false);
+      editor.focus();
     });
   }
 }
@@ -1349,17 +1412,7 @@ const settingsBtn = document.getElementById("btn-settings");
 const popover = document.getElementById("settings-popover");
 
 if (settingsBtn && popover) {
-  settingsBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    popover.classList.toggle("hidden");
-  });
-  document.addEventListener("click", (e) => {
-    if (popover.classList.contains("hidden")) return;
-    const target = e.target as Node | null;
-    if (!target) return;
-    if (popover.contains(target) || settingsBtn.contains(target)) return;
-    popover.classList.add("hidden");
-  });
+  wirePopover(settingsBtn, popover);
 
   const VAR_MAP: Record<keyof ThemeVariant, string> = {
     bg: "--bg",
@@ -1390,6 +1443,7 @@ if (settingsBtn && popover) {
     }
     if (mode === "dark") root.classList.add("dark");
     else root.classList.remove("dark");
+    ensureReadableText();
   };
   const applyTheme = (themeId: string, mode: Mode): void => {
     const themes = getThemes();

@@ -392,13 +392,15 @@ main {
 }
 
 .tab .tab-lang {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.5px;
   padding: 2px 6px;
   border-radius: 4px;
   background: rgb(var(--lang-color, var(--text-muted)) / 0.16);
-  color: rgb(var(--lang-color, var(--text-muted)));
+  /* Language colours are fixed across themes; main.ts (ensureReadableText) works out how
+   * far to push them toward black or white for ≥4.5:1 on the current theme. */
+  color: color-mix(in srgb, rgb(var(--lang-color, var(--text-muted))) var(--lang-ink-share, 55%), rgb(var(--lang-ink-target, var(--text-primary))));
   text-transform: uppercase;
   border: 0;
   cursor: pointer;
@@ -422,6 +424,11 @@ main {
 }
 
 .tab .tab-close {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-family: inherit;
+  cursor: pointer;
   width: 18px;
   height: 18px;
   display: inline-flex;
@@ -985,3 +992,12 @@ body.hide-line-numbers .cm-gutters { display: none; }
   cursor: pointer;
 }
 .account-submit:hover { background: rgb(var(--accent-hover, var(--accent))); }
+
+/* ---------- keyboard focus ---------- */
+
+/* One themed focus ring for the editor chrome; CodeMirror draws its own caret. */
+:where(button, select, a, input, [role="tab"]):focus-visible {
+  outline: 2px solid rgb(var(--accent));
+  outline-offset: -2px;
+  border-radius: 4px;
+}
