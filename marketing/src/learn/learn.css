@@ -63,7 +63,7 @@ body.learn {
   flex-direction: column;
   align-items: center;
   gap: 24px;
-  padding: 8px 32px 24px;
+  padding: 8px 32px 32px;
   min-height: 0;
   overflow-y: auto;
 }
@@ -349,12 +349,12 @@ body.learn {
 
 /* ---------- player ---------- */
 
+/* The player lines up with the code card's edges instead of the window's, with room around it. */
 .lp-player {
   display: flex;
   align-items: center;
   gap: 18px;
-  padding: 14px 32px calc(18px + env(safe-area-inset-bottom, 0px));
-  border-top: 1px solid var(--raise);
+  padding: 16px max(32px, calc((100% - 1080px) / 2)) calc(28px + env(safe-area-inset-bottom, 0px));
 }
 .lp-play {
   width: 52px;
