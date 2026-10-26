@@ -481,19 +481,65 @@ function currentMode(): Mode {
 
 // --- inline value decorations (playground JS: RunJS-style `⇒ value` at line end) ---
 
+// Lines whose multi-line value is shown in full under them (scratchpad "show all").
+const expandedLines = new Set<number>();
+
+/** A multi-line value shown in full, as a block under its line. */
+class FullValueWidget extends WidgetType {
+  constructor(readonly text: string) {
+    super();
+  }
+  eq(other: FullValueWidget): boolean {
+    return other.text === this.text;
+  }
+  toDOM(): HTMLElement {
+    const pre = document.createElement("pre");
+    pre.className = "cm-full-value";
+    pre.textContent = this.text;
+    return pre;
+  }
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
 class InlineValueWidget extends WidgetType {
-  constructor(readonly text: string, readonly error = false) {
+  constructor(
+    readonly text: string,
+    readonly error = false,
+    readonly line = 0,
+    readonly expandable = false,
+    readonly open = false, // part of equality, so toggling redraws the button
+  ) {
     super();
   }
   eq(other: InlineValueWidget): boolean {
-    return other.text === this.text && other.error === this.error;
+    return (
+      other.text === this.text && other.error === this.error && other.line === this.line &&
+      other.expandable === this.expandable && other.open === this.open
+    );
   }
   toDOM(): HTMLElement {
     const span = document.createElement("span");
     span.className = "cm-inline-value" + (this.error ? " cm-inline-error" : "");
     const firstLine = this.text.split("\n")[0];
-    span.textContent =
-      (this.error ? "  ✕ " : "  ⇒ ") + firstLine + (this.text.includes("\n") ? " …" : "");
+    const more = this.text.includes("\n");
+    span.textContent = (this.error ? "  ✕ " : "  ⇒ ") + firstLine + (more && !this.expandable ? " …" : "");
+    if (this.expandable) {
+      const open = this.open;
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "cm-value-toggle";
+      toggle.textContent = open ? "hide" : "show all";
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.addEventListener("mousedown", (e) => e.preventDefault()); // keep the caret where it is
+      toggle.addEventListener("click", () => {
+        if (open) expandedLines.delete(this.line);
+        else expandedLines.add(this.line);
+        applyInlineValues();
+      });
+      span.append(" ", toggle);
+    }
     return span;
   }
   ignoreEvent(): boolean {
@@ -501,7 +547,8 @@ class InlineValueWidget extends WidgetType {
   }
 }
 
-const setInlineValues = StateEffect.define<{ line: number; text: string; error?: boolean }[]>();
+type InlineValue = { line: number; text: string; error?: boolean; expandable?: boolean };
+const setInlineValues = StateEffect.define<InlineValue[]>();
 
 const inlineValuesField = StateField.define<DecorationSet>({
   create: () => Decoration.none,
@@ -510,16 +557,19 @@ const inlineValuesField = StateField.define<DecorationSet>({
     for (const e of tr.effects) {
       if (!e.is(setInlineValues)) continue;
       const ranges = [];
-      for (const { line, text, error } of e.value) {
+      for (const { line, text, error, expandable } of e.value) {
         if (line < 1 || line > tr.state.doc.lines) continue;
         const { from, to } = tr.state.doc.line(line);
         if (error) ranges.push(Decoration.line({ class: "cm-error-line" }).range(from));
         ranges.push(
           Decoration.widget({
-            widget: new InlineValueWidget(text, error),
+            widget: new InlineValueWidget(text, error, line, expandable, expandedLines.has(line)),
             side: 1,
           }).range(to),
         );
+        if (expandable && expandedLines.has(line)) {
+          ranges.push(Decoration.widget({ widget: new FullValueWidget(text), block: true, side: 2 }).range(to));
+        }
       }
       deco = Decoration.set(ranges, true);
     }
@@ -994,11 +1044,17 @@ function shouldShowInline(): boolean {
  */
 function applyInlineValues(): void {
   const t = getActiveTab();
-  let values: { line: number; text: string; error?: boolean }[] = [];
+  let values: InlineValue[] = [];
   if (t.kind !== "playground") {
+    // Scratchpads have no results pane: a multi-line value can open in full under its line.
     const byLine = new Map<number, string[]>();
-    for (const r of lastResults) if (r.line > 0) byLine.set(r.line, [...(byLine.get(r.line) ?? []), r.display.split("\n")[0]]);
-    values = [...byLine].map(([line, texts]) => ({ line, text: texts.join("  ·  ") }));
+    for (const r of lastResults) if (r.line > 0) byLine.set(r.line, [...(byLine.get(r.line) ?? []), r.display]);
+    values = [...byLine].map(([line, texts]) => {
+      const text = texts.join("\n\n");
+      return texts.length > 1 || text.includes("\n")
+        ? { line, text, expandable: true }
+        : { line, text };
+    });
     const err = scratchError();
     if (err) values.push({ line: err.line, text: err.message, error: true });
   } else if (shouldShowInline()) {
@@ -1109,6 +1165,9 @@ if (isEmbedded) {
 if (isEmbedded) {
   const expand = document.getElementById("btn-expand");
   if (expand) {
+    // It lived in the results pane, which scratchpads no longer show; keep it in the tab bar.
+    document.querySelector(".tab-bar")?.insertBefore(expand, document.getElementById("btn-new-tab"));
+    expand.classList.add("in-tab-bar");
     expand.classList.remove("hidden");
     expand.addEventListener("click", () => {
       try {
@@ -1162,6 +1221,8 @@ function loadActiveIntoEditor(): void {
 function syncViewToActiveTab(): void {
   const t = getActiveTab();
   const isPlay = t.kind === "playground";
+  // Scratchpads show values in the code, so only playgrounds (preview) use the right pane.
+  document.querySelector("main")?.classList.toggle("no-results", !isPlay);
   panelTabsEl?.classList.toggle("hidden", !isPlay);
   previewPane?.classList.toggle("hidden", !isPlay);
   resultsInner.classList.toggle("hidden", isPlay);

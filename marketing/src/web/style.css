@@ -1248,3 +1248,36 @@ select.lesson-btn option { background: rgb(var(--bg-secondary)); color: rgb(var(
 @media (min-width: 768px) {
   .toast { left: calc(48px + (100vw - 48px) / 4); }
 }
+
+/* ---------- scratchpads: full-width editor, values in the code ---------- */
+
+main.no-results { grid-template-columns: minmax(0, 1fr); }
+main.no-results #splitter,
+main.no-results #results { display: none; }
+@media (max-width: 767px) {
+  main.no-results { grid-template-rows: minmax(0, 1fr); }
+}
+#btn-expand.in-tab-bar { position: static; align-self: center; margin-right: 4px; }
+
+.cm-value-toggle {
+  pointer-events: auto;
+  background: transparent;
+  border: 1px solid rgb(var(--border));
+  border-radius: 4px;
+  color: rgb(var(--text-secondary));
+  font: inherit;
+  font-style: normal;
+  font-size: 0.85em;
+  padding: 0 6px;
+  cursor: pointer;
+}
+.cm-value-toggle:hover { color: rgb(var(--text-primary)); border-color: rgb(var(--text-muted)); }
+.cm-full-value {
+  margin: 2px 0 6px 2ch;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: rgb(var(--bg-secondary));
+  color: rgb(var(--text-secondary));
+  font: inherit;
+  white-space: pre-wrap;
+}
