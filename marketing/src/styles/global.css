@@ -29,6 +29,8 @@
 }
 
 @layer base {
+  /* Avoid a lone word on the last line of a paragraph. */
+  p, dd { text-wrap: pretty; }
   body {
     @apply bg-bg text-primary font-sans antialiased;
   }

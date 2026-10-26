@@ -992,6 +992,18 @@ a.example-item { color: inherit; text-decoration: none; }
   cursor: pointer;
 }
 .lesson-btn:hover { border-color: rgb(var(--text-muted)); }
+/* The speed menu matches the buttons instead of the platform's select chrome. */
+select.lesson-btn {
+  appearance: none;
+  padding-right: 24px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 13px) 55%, calc(100% - 9px) 55%;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+}
+select.lesson-btn option { background: rgb(var(--bg-secondary)); color: rgb(var(--text-primary)); }
 
 .lesson-time { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 /* Narration line (or the intro before Play), across the top of the bar. */
@@ -1020,6 +1032,8 @@ a.example-item { color: inherit; text-decoration: none; }
 /* ---------- account popover ---------- */
 
 .account-section { padding: 8px 12px 12px; }
+/* The section already pads the panel; the shared title padding would indent it past the text. */
+.account-section .settings-title { padding-inline: 0; }
 .account-text { margin: 6px 0; line-height: 1.45; }
 .account-muted { color: rgb(var(--text-secondary)); }
 .account-error { color: rgb(var(--danger)); min-height: 0; }
