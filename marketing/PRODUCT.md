@@ -30,7 +30,7 @@ The lesson is not a video of an editor; it is the editor. Recorded edits replay 
 - **Scratchpad tabs:** TS/JS run in a Web Worker; each top-level expression's value appears beside its line. `npm:` imports load as ESM from esm.sh.
 - **Playground tabs:** HTML, CSS and JS panels render in a sandboxed iframe with a console.
 - **Recording:** the owner records a tab with their microphone; every edit, panel switch and run is logged against the audio clock, then saved as lesson JSON plus audio into `public/lessons/`.
-- **Playback:** `/web/?lesson=<name>` opens a lesson tab; audio drives the editor. A student's first edit forks an ordinary tab (an "experiment") that saves, shares and reopens like any other.
+- **Playback:** `/learn/<name>` is the lesson page; audio drives a read-only editor that replays the instructor's changes, runs the code and shows values (the older `/web/?lesson=<name>` tab is being replaced). A student's first edit forks an ordinary tab (an "experiment") that saves, shares and reopens like any other.
 - **Accounts:** optional email-code sign-in. Signed-in students' experiments and lesson progress sync across devices; guests keep work on their device.
 - Embedded on the landing page as a live editor.
 
@@ -46,7 +46,8 @@ The lesson is not a video of an editor; it is the editor. Recorded edits replay 
 ## Brand Commitments
 
 - Name: **justrunjs** (lowercase). Part of the owner's "just\*" family of apps.
-- Built on the owner's design system `@codellyson/justui` (themes, tokens, boot script); the app follows its theme catalogue rather than defining its own.
+- Built on the owner's design system `@codellyson/justui` (themes, tokens, boot script); the scratchpad and landing page follow its theme catalogue rather than defining their own.
+- Lessons (`/learn/`) are the exception: the classroom has one fixed look, personal, immersive and warm. A warm dark stage, the Recursive typeface (casual mono for code), the instructor in apricot and the student's work in teal. It does not change with the scratchpad's theme.
 
 ## Evidence on Hand
 

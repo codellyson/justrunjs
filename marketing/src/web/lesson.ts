@@ -77,3 +77,43 @@ export function seek(lesson: Lesson, marks: ReplayState[], ms: number): ReplaySt
   }
   return replay(lesson, ms, from);
 }
+
+/**
+ * The latest moment at or before `ms` whose code is complete. The instructor types a character
+ * at a time, so most moments are mid-keystroke; a pause should show `nums.map(…);`, not a
+ * half-typed `nums.ma`. "Complete" means the script file parses (`parse` throws when it doesn't);
+ * best is also every file ending on a finished line.
+ */
+export function completeAt(lesson: Lesson, marks: ReplayState[], ms: number, parse: (src: string) => unknown): number {
+  const slot: SlotId = lesson.kind === "playground" ? "js" : "main";
+  const check = (t: number) => {
+    const docs = seek(lesson, marks, t).docs;
+    try {
+      parse(docs.get(slot)?.toString() ?? "");
+    } catch {
+      return 0;
+    }
+    const settled = [...docs.values()].every((d) => {
+      const text = d.toString();
+      return text === "" || text.endsWith("\n");
+    });
+    return settled ? 2 : 1;
+  };
+  const atMs = check(ms);
+  if (atMs === 2) return ms;
+  const times = lesson.events.filter((e) => e.t <= ms && e.type === "change").map((e) => e.t);
+  let fallback = atMs ? ms : -1;
+  for (let i = times.length - 1; i >= 0; i--) {
+    if (ms - times[i] > 30_000) break; // nothing clean nearby: settle for what we found
+    if (times[i] === times[i + 1]) continue; // same moment; the later event was already checked
+    const c = check(times[i]);
+    if (c === 2) return times[i];
+    if (c === 1 && fallback < 0) fallback = times[i];
+  }
+  return fallback >= 0 ? fallback : ms;
+}
+
+export const formatTime = (ms: number) => {
+  const secs = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+};

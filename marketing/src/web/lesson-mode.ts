@@ -3,7 +3,7 @@
 // so experiments save, share and reopen like any other tab.
 import { Annotation, ChangeSet, Transaction, type AnnotationType, type Text } from "@codemirror/state";
 import type { EditorView, ViewUpdate } from "@codemirror/view";
-import { checkpoints, seek, step, type Lesson, type LessonEvent, type ReplayState, type SlotId } from "./lesson.ts";
+import { checkpoints, completeAt as lessonCompleteAt, formatTime, seek, step, type Lesson, type LessonEvent, type ReplayState, type SlotId } from "./lesson.ts";
 import type { initAccount } from "./account.ts";
 
 /** Transactions that load a tab or panel into the editor; never learner or author input. */
@@ -50,10 +50,6 @@ export interface LessonContext {
 }
 
 const $ = (id: string) => document.getElementById(id)!;
-const formatTime = (ms: number) => {
-  const secs = Math.max(0, Math.floor(ms / 1000));
-  return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
-};
 const shownSlot = (t: LessonTab): SlotId => (t.kind === "playground" ? t.activePanel ?? "html" : "main");
 const readSlot = (t: LessonTab, id: SlotId) => (id === "main" ? t.content : t[id]) ?? "";
 function writeSlot(t: LessonTab, id: SlotId, value: string) {
@@ -348,45 +344,9 @@ export function initLessonMode(ctx: LessonContext) {
   };
   // Resume once, as soon as the account's progress for this lesson is known.
   let resumed = false;
-  // The instructor types a character at a time, so most moments in a lesson are mid-keystroke.
-  // When the lesson stops somewhere (pause, scrub, arrow keys, resume), step back to the latest
-  // moment where its script is complete code, and rewind the audio to match.
-  const scriptSlot = (): SlotId => (lesson!.kind === "playground" ? "js" : "main");
   // Loaded with the lesson, so the check can run synchronously (a fork happens mid-keystroke).
   let transpile: ((src: string) => unknown) | null = null;
-  function completeAt(ms: number): number {
-    if (!transpile) return ms;
-    const parse = transpile;
-    const slot = scriptSlot();
-    // "Complete" means it parses; best is also at the end of a finished line, so a pause
-    // shows `nums.map(…);` rather than a valid-but-half-typed `nums.ma`.
-    const check = (t: number) => {
-      const docs = seek(lesson!, marks, t).docs;
-      try {
-        parse(docs.get(slot)?.toString() ?? "");
-      } catch {
-        return 0;
-      }
-      // Best: every file (HTML and CSS too) ends on a finished line, so nothing is mid-word.
-      const settled = [...docs.values()].every((d) => {
-        const text = d.toString();
-        return text === "" || text.endsWith("\n");
-      });
-      return settled ? 2 : 1;
-    };
-    const atMs = check(ms);
-    if (atMs === 2) return ms;
-    const times = lesson!.events.filter((e) => e.t <= ms && e.type === "change").map((e) => e.t);
-    let fallback = atMs ? ms : -1;
-    for (let i = times.length - 1; i >= 0; i--) {
-      if (ms - times[i] > 30_000) break; // nothing clean nearby: settle for what we found
-      if (times[i] === times[i + 1]) continue; // same moment; the later event was already checked
-      const c = check(times[i]);
-      if (c === 2) return times[i];
-      if (c === 1 && fallback < 0) fallback = times[i];
-    }
-    return fallback >= 0 ? fallback : ms;
-  }
+  const completeAt = (ms: number) => (transpile ? lessonCompleteAt(lesson!, marks, ms, transpile) : ms);
   let snapGen = 0;
   async function settleAt(ms: number) {
     const gen = ++snapGen;
