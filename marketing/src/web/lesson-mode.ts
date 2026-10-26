@@ -236,7 +236,7 @@ export function initLessonMode(ctx: LessonContext) {
     const exp: LessonTab = {
       ...from,
       id: "t-" + Date.now(),
-      name: ctx.uniqueTabName(`${lesson!.title} (my copy from ${formatTime(shownMs)})`),
+      name: ctx.uniqueTabName(`${lesson!.title} (experiment from ${formatTime(shownMs)})`),
       lessonSource: undefined,
       lesson: { slug: slug!, originMs: shownMs },
     };
@@ -269,6 +269,42 @@ export function initLessonMode(ctx: LessonContext) {
 
   // Progress: saved on pause, at the end, and every 10s of playback, for signed-in learners.
   let lastSaved = 0;
+  // Finished lessons, remembered on this device (signed-in progress also counts).
+  const DONE_KEY = "runjs.lessonsDone";
+  const doneHere = (): string[] => {
+    try {
+      return JSON.parse(localStorage.getItem(DONE_KEY) ?? "[]");
+    } catch {
+      return [];
+    }
+  };
+  const isDone = (s: string) => doneHere().includes(s) || !!ctx.account.progressFor(s)?.completed;
+  function markDone() {
+    if (!isDone(slug!)) localStorage.setItem(DONE_KEY, JSON.stringify([...doneHere(), slug]));
+    paintDoneMarks();
+  }
+  /** The published lessons, in the order the Examples & lessons list shows them. */
+  const lessonLinks = () =>
+    [...document.querySelectorAll<HTMLAnchorElement>('#examples-popover a.example-item[href*="?lesson="]')].map((a) => ({
+      a,
+      slug: new URL(a.href).searchParams.get("lesson")!,
+      title: a.querySelector(".example-title")?.textContent ?? "",
+    }));
+  function paintDoneMarks() {
+    for (const { a, slug: s } of lessonLinks()) {
+      const blurb = a.querySelector<HTMLElement>(".example-blurb");
+      if (!blurb) continue;
+      blurb.dataset.base ??= blurb.textContent ?? "";
+      blurb.textContent = blurb.dataset.base + (isDone(s) ? " · Done ✓" : "");
+    }
+  }
+  function nextLessonButton() {
+    const all = lessonLinks();
+    const at = all.findIndex((l) => l.slug === slug);
+    const next = [...all.slice(at + 1), ...all.slice(0, Math.max(0, at))].find((l) => !isDone(l.slug));
+    return next ? [button(`Next lesson: ${next.title} →`, () => (location.href = next.a.href))] : [];
+  }
+
   const saveProgress = (completed = false) => {
     lastSaved = performance.now();
     ctx.account.saveProgress(slug!, audio.currentTime * 1000, completed || audio.currentTime * 1000 >= lesson!.durationMs - 1000);
@@ -330,7 +366,9 @@ export function initLessonMode(ctx: LessonContext) {
   ctx.account.onChange(() => {
     resume();
     render();
+    paintDoneMarks();
   });
+  paintDoneMarks();
 
   function tick() {
     if (onLessonTab() && !audio.paused) {
@@ -358,6 +396,7 @@ export function initLessonMode(ctx: LessonContext) {
     audio.onended = () => {
       advance(Infinity);
       saveProgress(true);
+      markDone();
       ended = true;
       render();
     };
@@ -395,9 +434,9 @@ export function initLessonMode(ctx: LessonContext) {
 
   // ---------- the bar under the editor ----------
 
-  function button(label: string, onClick: () => void, title = label) {
+  function button(label: string, onClick: () => void, title = label, primary = false) {
     const b = document.createElement("button");
-    b.className = "lesson-btn";
+    b.className = "lesson-btn" + (primary ? " primary" : "");
     b.textContent = label;
     b.title = title;
     b.addEventListener("click", onClick);
@@ -406,7 +445,7 @@ export function initLessonMode(ctx: LessonContext) {
   const text = (value: string, className = "lesson-text") => Object.assign(document.createElement("span"), { className, textContent: value });
 
   const clock = text("", "lesson-time");
-  const INTRO = "Press Play to start. Pause anytime and edit the code: your changes become your own copy.";
+  const INTRO = "Press Play to start. Pause anytime and edit the code: your edits start your own experiment, and the lesson stays as it is.";
   const caption = text("", "lesson-caption");
   let started = false; // the intro shows until the lesson is played or scrubbed
   let ended = false;
@@ -481,10 +520,12 @@ export function initLessonMode(ctx: LessonContext) {
       items.push(
         text("Lesson complete.", "lesson-done"),
         ...(lesson.outro ? [text(lesson.outro, "lesson-caption")] : []),
-        button("↺ Replay", replay),
+        // Your turn comes first; replaying is the secondary choice.
         exp
-          ? button("Open your experiment", () => ctx.activateTab(exp.id))
-          : button("Start experimenting", () => fork(undefined, "This copy is yours. Change anything; the lesson is unchanged.")),
+          ? button("Open your experiment", () => ctx.activateTab(exp.id), undefined, true)
+          : button("Start experimenting", () => fork(undefined, "This experiment is yours. Change anything; the lesson stays as it is."), undefined, true),
+        button("↺ Replay", replay),
+        ...nextLessonButton(),
       );
     } else if (lesson) {
       const t = ctx.activeTab();

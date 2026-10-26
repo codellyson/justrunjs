@@ -98,7 +98,7 @@ Math.floor(3.9);
     examples: [
       {
         id: "array-basics",
-        title: "Array basics",
+        title: "Array methods",
         blurb: "push, length, indexing, slice",
         language: "javascript",
         code: `const nums = [1, 2, 3];

@@ -1023,6 +1023,13 @@ a.example-item { color: inherit; text-decoration: none; }
   cursor: pointer;
 }
 .lesson-btn:hover { border-color: rgb(var(--text-muted)); }
+.lesson-btn.primary {
+  background: rgb(var(--accent));
+  border-color: rgb(var(--accent));
+  color: rgb(var(--accent-text));
+  font-weight: 600;
+}
+.lesson-btn.primary:hover { background: rgb(var(--accent-hover)); border-color: rgb(var(--accent-hover)); }
 /* The speed menu matches the buttons instead of the platform's select chrome. */
 select.lesson-btn {
   appearance: none;
