@@ -429,13 +429,12 @@ document.documentElement.style.setProperty(
   fontSize + "px",
 );
 
-// Several justui themes ship text under WCAG AA (muted as low as 2.1:1; Solarized light's
-// primary text fails on its secondary background). After a theme is applied, push each
-// text colour toward black (light themes) or white (dark themes) just enough to reach 4.5:1
-// on both backgrounds, so the theme keeps its tint. Language badges get the same treatment
-// through --lang-ink-share, since their colours are fixed across themes.
+// Language badge colours are fixed across themes, so on some backgrounds they fall under
+// WCAG AA. After a theme is applied, work out how far to push them toward black (light
+// themes) or white (dark themes) to reach 4.5:1, and hand that to the CSS through
+// --lang-ink-share / --lang-ink-target. (Theme text colours meet AA in justui ≥1.0.3.)
 const LANG_BADGES = [[71, 137, 209], [224, 179, 40], [149, 123, 246]]; // TS, JS, playground
-function ensureReadableText(): void {
+function ensureReadableBadges(): void {
   const root = document.documentElement;
   const css = getComputedStyle(root);
   const rgb = (name: string) => css.getPropertyValue(name).trim().split(/\s+/).map(Number);
@@ -451,25 +450,19 @@ function ensureReadableText(): void {
   const backgrounds = [rgb("--bg"), rgb("--bg-secondary")];
   if (backgrounds.some((c) => c.length !== 3 || c.some(Number.isNaN))) return;
   const extreme = lum(backgrounds[0]) > 0.4 ? [0, 0, 0] : [255, 255, 255];
-  // Smallest step toward the extreme (0..20 × 5%) at which every check passes.
-  const firstPassing = (passes: (t: number) => boolean) => {
-    for (let i = 0; i <= 20; i++) if (passes(i / 20)) return i / 20;
-    return 1;
-  };
-  for (const name of ["--text-primary", "--text-secondary", "--text-muted"]) {
-    const base = rgb(name);
-    if (base.length !== 3 || base.some(Number.isNaN)) continue;
-    const t = firstPassing((t) => backgrounds.every((bg) => ratio(mix(base, extreme, t), bg) >= 4.5));
-    root.style.setProperty(name, mix(base, extreme, t).join(" "));
-  }
   // A badge is its language colour on a 16% tint of itself, over either background.
-  const t = firstPassing((t) =>
-    LANG_BADGES.every((lang) => backgrounds.every((bg) => ratio(mix(lang, extreme, t), mix(bg, lang, 0.16)) >= 4.5)),
-  );
+  let t = 1;
+  for (let i = 0; i <= 20; i++) {
+    const step = i / 20;
+    if (LANG_BADGES.every((lang) => backgrounds.every((bg) => ratio(mix(lang, extreme, step), mix(bg, lang, 0.16)) >= 4.5))) {
+      t = step;
+      break;
+    }
+  }
   root.style.setProperty("--lang-ink-target", extreme.join(" "));
   root.style.setProperty("--lang-ink-share", `${Math.round((1 - t) * 100)}%`);
 }
-ensureReadableText();
+ensureReadableBadges();
 
 function currentMode(): Mode {
   return document.documentElement.dataset.themeMode === "light"
@@ -1443,7 +1436,7 @@ if (settingsBtn && popover) {
     }
     if (mode === "dark") root.classList.add("dark");
     else root.classList.remove("dark");
-    ensureReadableText();
+    ensureReadableBadges();
   };
   const applyTheme = (themeId: string, mode: Mode): void => {
     const themes = getThemes();

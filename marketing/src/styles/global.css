@@ -1,8 +1,7 @@
-@import "@codellyson/justui/tokens.css";
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* justui 1.0: tokens, Tailwind v4 and the design config in one import. */
+@import "@codellyson/justui/tailwind.css";
+/* The Astro adapters (Button, ThemeToggle) ship as source, outside the scanned dist. */
+@source "../../node_modules/@codellyson/justui/src/astro";
 
 * {
   scrollbar-width: thin;

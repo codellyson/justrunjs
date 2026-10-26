@@ -27,7 +27,7 @@
   --border: 56 50 45;
   --text-primary: 232 222 210;
   --text-secondary: 178 167 152;
-  --text-muted: 124 114 102;
+  --text-muted: 144 135 125;
   --accent: 168 180 220;
   --accent-hover: 195 205 235;
   --accent-text: 22 20 18;
@@ -398,7 +398,7 @@ main {
   padding: 2px 6px;
   border-radius: 4px;
   background: rgb(var(--lang-color, var(--text-muted)) / 0.16);
-  /* Language colours are fixed across themes; main.ts (ensureReadableText) works out how
+  /* Language colours are fixed across themes; main.ts (ensureReadableBadges) works out how
    * far to push them toward black or white for ≥4.5:1 on the current theme. */
   color: color-mix(in srgb, rgb(var(--lang-color, var(--text-muted))) var(--lang-ink-share, 55%), rgb(var(--lang-ink-target, var(--text-primary))));
   text-transform: uppercase;
