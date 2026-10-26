@@ -222,7 +222,8 @@ main {
 .tab-bar { grid-row: 1; }
 #panel-tabs { grid-row: 2; }
 #editor-host { grid-row: 3; }
-#lesson-bar { grid-row: 4; }
+#lesson-bar,
+#lesson-invite { grid-row: 4; }
 
 #editor-host {
   position: relative;
@@ -1156,6 +1157,8 @@ select.lesson-btn option { background: rgb(var(--bg-secondary)); color: rgb(var(
   /* Keep Play, time, slider and speed on one row; the slider gives way first. */
   .lesson-bar { gap: 8px; padding: 6px 8px; }
   .lesson-seek { flex-basis: 0; min-width: 48px; }
+  /* Reading text needs a real gutter, not the controls' tight padding. */
+  .lesson-invite { padding: 12px 16px; }
 
   /* Popovers become sheets above the bottom bar. */
   .settings-popover,
@@ -1281,3 +1284,17 @@ main.no-results #results { display: none; }
   font: inherit;
   white-space: pre-wrap;
 }
+
+/* ---------- first visit: lesson invite, empty editor ---------- */
+
+.lesson-invite-text {
+  flex-basis: 100%;
+  margin: 0;
+  color: rgb(var(--text-primary));
+  font-size: 14px;
+  line-height: 1.45;
+  max-width: 70ch;
+}
+a.lesson-btn { text-decoration: none; display: inline-flex; align-items: center; }
+.lesson-invite-dismiss { border-color: transparent; color: rgb(var(--text-secondary)); }
+.cm-placeholder { color: rgb(var(--text-muted)); font-style: italic; }

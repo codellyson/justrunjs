@@ -137,6 +137,15 @@ const LESSONS = readdirSync(lessonsDir)
         <div id="panel-tabs" class="panel-tabs hidden" role="tablist"></div>
         <div id="editor-host"></div>
         <div id="lesson-bar" class="lesson-bar hidden" role="toolbar" aria-label="Lesson"></div>
+        {LESSONS.length > 0 && (
+          <section id="lesson-invite" class="lesson-bar lesson-invite hidden" aria-label="Lessons">
+            <p class="lesson-invite-text">New to coding? Follow a narrated lesson right here in the editor. Pause anytime and try things yourself.</p>
+            {LESSONS.map((l) => (
+              <a class="lesson-btn" href={`/web/?lesson=${l.slug}`}>▶ {l.title} · {l.length}</a>
+            ))}
+            <button type="button" class="lesson-btn lesson-invite-dismiss" id="lesson-invite-dismiss">Not now</button>
+          </section>
+        )}
       </div>
       <div id="splitter" aria-hidden="true"></div>
       <div id="results">

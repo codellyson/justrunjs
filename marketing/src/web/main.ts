@@ -10,6 +10,7 @@ import {
 import {
   EditorView,
   keymap,
+  placeholder,
   Decoration,
   WidgetType,
   type DecorationSet,
@@ -609,6 +610,19 @@ const editor = new EditorView({
         },
       ])),
       languageCompartment.of(slotLanguageExt(_bootTab)),
+      // An empty file says what to do with it.
+      placeholder(() => {
+        const t = getActiveTab();
+        const hint =
+          t.kind !== "playground"
+            ? "Type JavaScript or TypeScript here. Each value shows up at the end of its line."
+            : panelOf(t) === "html"
+              ? "Write HTML here. It renders in the preview."
+              : panelOf(t) === "css"
+                ? "Write CSS here. It styles the preview."
+                : "Write JavaScript here. It runs in the preview; console output shows below it.";
+        return Object.assign(document.createElement("span"), { textContent: hint });
+      }),
       inlineValuesField,
       Prec.highest(tsCompartment.of([])),
       Prec.highest(highlightCompartment.of(highlightFor(currentMode()))),
@@ -1532,6 +1546,26 @@ if (newTabBtn && newTabMenu) {
 }
 
 renderTabs();
+
+// First visit without a lesson link: invite to a lesson until one is opened or the invite is dismissed.
+const INVITE_KEY = "runjs.lessonInviteDismissed";
+const invite = document.getElementById("lesson-invite");
+if (invite) {
+  const seenLessons = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("runjs.lessonsDone") ?? "[]").length > 0 || tabs.some((t) => t.lesson);
+    } catch {
+      return false;
+    }
+  })();
+  const onLesson = new URLSearchParams(location.search).has("lesson");
+  invite.classList.toggle("hidden", onLesson || seenLessons || !!localStorage.getItem(INVITE_KEY));
+  document.getElementById("lesson-invite-dismiss")?.addEventListener("click", () => {
+    localStorage.setItem(INVITE_KEY, "1");
+    invite.classList.add("hidden");
+    editor.focus();
+  });
+}
 
 account = initAccount({
   tabs: () => tabs,
