@@ -1482,8 +1482,7 @@ function renderTabs(): void {
   if (hadFocus) tabsEl.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
 
   // Bring the open tab into view, and fade the strip's edge when more tabs are off-screen.
-  tabsEl.querySelector<HTMLElement>(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  markTabOverflow();
+  showActiveTab();
 }
 
 /** Where the open tab's work is saved, with a Retry when a save to the account failed. */
@@ -1495,7 +1494,7 @@ function renderSaveStatus(): void {
   el.replaceChildren();
   el.classList.toggle("hidden", !s);
   el.classList.toggle("failed", !!s?.retry);
-  if (!s) return;
+  if (!s) return showActiveTab();
   el.title = s.reason ?? "";
   const long = document.createElement("span");
   long.className = "save-long";
@@ -1512,15 +1511,41 @@ function renderSaveStatus(): void {
     retry.addEventListener("click", s.retry);
     el.append(retry);
   }
+  showActiveTab(); // the status's width sets the strip's width
+}
+
+// The strip fades its right edge when more tabs are off-screen (see #tabs.more-right); the open
+// tab has to sit fully clear of that fade, or it reads as covered. These look the strip up
+// directly because the save status calls them early in startup.
+function showActiveTab(): void {
+  const strip = document.getElementById("tabs");
+  const active = strip?.querySelector<HTMLElement>(".tab.active");
+  if (!strip || !active) return;
+  const FADE = 48;
+  const box = strip.getBoundingClientRect();
+  const tab = active.getBoundingClientRect();
+  // Starts off-screen, or too wide to fit at all (long experiment names on a phone): show its start.
+  if (tab.left < box.left || tab.width > box.width - FADE) strip.scrollLeft += tab.left - box.left;
+  else {
+    const hidden = tab.right - (box.right - FADE);
+    // Only when more tabs follow: the last tab can sit at the edge, which then has no fade.
+    if (hidden > 0 && strip.scrollLeft + strip.clientWidth < strip.scrollWidth) {
+      strip.scrollLeft = Math.min(strip.scrollLeft + hidden, strip.scrollWidth - strip.clientWidth);
+    }
+  }
+  markTabOverflow();
 }
 
 function markTabOverflow(): void {
-  if (!tabsEl) return;
-  const more = tabsEl.scrollWidth - tabsEl.clientWidth - tabsEl.scrollLeft > 1;
-  tabsEl.classList.toggle("more-right", more);
+  const strip = document.getElementById("tabs");
+  if (!strip) return;
+  strip.classList.toggle("more-right", strip.scrollWidth - strip.clientWidth - strip.scrollLeft > 1);
 }
 tabsEl?.addEventListener("scroll", markTabOverflow);
-window.addEventListener("resize", markTabOverflow);
+// A narrower window (or the phone layout) can push the open tab out of view.
+window.addEventListener("resize", showActiveTab);
+// Web fonts change tab widths after the first render.
+void document.fonts?.ready.then(showActiveTab);
 
 const newTabBtn = document.getElementById("btn-new-tab");
 const newTabMenu = document.getElementById("new-tab-menu");
