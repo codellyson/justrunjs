@@ -3,17 +3,12 @@ import {
   EditorState,
   Compartment,
   Prec,
-  StateField,
-  StateEffect,
   type Extension,
 } from "@codemirror/state";
 import {
   EditorView,
   keymap,
   placeholder,
-  Decoration,
-  WidgetType,
-  type DecorationSet,
 } from "@codemirror/view";
 import { indentWithTab } from "@codemirror/commands";
 import { javascript } from "@codemirror/lang-javascript";
@@ -26,12 +21,6 @@ import {
 } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 import { findExample } from "./examples.ts";
-import inspectorRaw from "./inspector.ts?raw";
-import {
-  PREVIEW_SOURCE,
-  buildBridge,
-  type PreviewMessage,
-} from "./preview-bootstrap.ts";
 import {
   decodeSharedBin,
   encodeShareUrl,
@@ -42,27 +31,9 @@ import {
 import { initLessonMode, slotLoadAnnotations } from "./lesson-mode.ts";
 import { initAccount } from "./account.ts";
 import { wirePopover } from "./popover.ts";
-
-interface LineResult {
-  line: number;
-  display: string;
-}
-
-interface EvalOutcome {
-  results: LineResult[];
-  ms: number;
-}
-
-interface Transport {
-  evaluate(source: string): Promise<EvalOutcome>;
-  stop(): void;
-}
-
-type ReadyMessage = { type: "ready" };
-type ReplyMessage =
-  | { id: number; ok: true; results: LineResult[]; ms: number }
-  | { id: number; ok: false; error: string; line?: number; results?: LineResult[] };
-type WorkerMessage = ReadyMessage | ReplyMessage;
+import { inlineValuesField, setInlineValues, type InlineValue } from "./inline-values.ts";
+import { createScratchRunner, type LineResult, type RunStatus } from "./scratch-runner.ts";
+import { createPreview } from "./preview.ts";
 
 interface ThemeVariant {
   bg?: string;
@@ -292,9 +263,8 @@ const consoleCountEl = document.getElementById("console-count");
 const panelTabsEl = document.getElementById("panel-tabs");
 const PANELS: PanelId[] = ["html", "css", "js"];
 
-type StatusState = "ready" | "running" | "ok" | "error";
-const STATES: StatusState[] = ["ready", "running", "ok", "error"];
-function setStatus(text: string, state?: StatusState): void {
+const STATES: RunStatus[] = ["ready", "running", "ok", "error"];
+function setStatus(text: string, state?: RunStatus): void {
   sidebarStatusEl.title = text;
   sidebarStatusEl.setAttribute("aria-label", `Status: ${text}`);
   for (const s of STATES) sidebarStatusEl.classList.remove(s);
@@ -486,105 +456,6 @@ function currentMode(): Mode {
     : "dark";
 }
 
-// --- inline value decorations (playground JS: RunJS-style `⇒ value` at line end) ---
-
-// Lines whose multi-line value is shown in full under them (scratchpad "show all").
-const expandedLines = new Set<number>();
-
-/** A multi-line value shown in full, as a block under its line. */
-class FullValueWidget extends WidgetType {
-  constructor(readonly text: string) {
-    super();
-  }
-  eq(other: FullValueWidget): boolean {
-    return other.text === this.text;
-  }
-  toDOM(): HTMLElement {
-    const pre = document.createElement("pre");
-    pre.className = "cm-full-value";
-    pre.textContent = this.text;
-    return pre;
-  }
-  ignoreEvent(): boolean {
-    return true;
-  }
-}
-
-class InlineValueWidget extends WidgetType {
-  constructor(
-    readonly text: string,
-    readonly error = false,
-    readonly line = 0,
-    readonly expandable = false,
-    readonly open = false, // part of equality, so toggling redraws the button
-  ) {
-    super();
-  }
-  eq(other: InlineValueWidget): boolean {
-    return (
-      other.text === this.text && other.error === this.error && other.line === this.line &&
-      other.expandable === this.expandable && other.open === this.open
-    );
-  }
-  toDOM(): HTMLElement {
-    const span = document.createElement("span");
-    span.className = "cm-inline-value" + (this.error ? " cm-inline-error" : "");
-    const firstLine = this.text.split("\n")[0];
-    const more = this.text.includes("\n");
-    span.textContent = (this.error ? "  ✕ " : "  ⇒ ") + firstLine + (more && !this.expandable ? " …" : "");
-    if (this.expandable) {
-      const open = this.open;
-      const toggle = document.createElement("button");
-      toggle.type = "button";
-      toggle.className = "cm-value-toggle";
-      toggle.textContent = open ? "hide" : "show all";
-      toggle.setAttribute("aria-expanded", String(open));
-      toggle.addEventListener("mousedown", (e) => e.preventDefault()); // keep the caret where it is
-      toggle.addEventListener("click", () => {
-        if (open) expandedLines.delete(this.line);
-        else expandedLines.add(this.line);
-        applyInlineValues();
-      });
-      span.append(" ", toggle);
-    }
-    return span;
-  }
-  ignoreEvent(): boolean {
-    return true;
-  }
-}
-
-type InlineValue = { line: number; text: string; error?: boolean; expandable?: boolean };
-const setInlineValues = StateEffect.define<InlineValue[]>();
-
-const inlineValuesField = StateField.define<DecorationSet>({
-  create: () => Decoration.none,
-  update(deco, tr) {
-    deco = deco.map(tr.changes);
-    for (const e of tr.effects) {
-      if (!e.is(setInlineValues)) continue;
-      const ranges = [];
-      for (const { line, text, error, expandable } of e.value) {
-        if (line < 1 || line > tr.state.doc.lines) continue;
-        const { from, to } = tr.state.doc.line(line);
-        if (error) ranges.push(Decoration.line({ class: "cm-error-line" }).range(from));
-        ranges.push(
-          Decoration.widget({
-            widget: new InlineValueWidget(text, error, line, expandable, expandedLines.has(line)),
-            side: 1,
-          }).range(to),
-        );
-        if (expandable && expandedLines.has(line)) {
-          ranges.push(Decoration.widget({ widget: new FullValueWidget(text), block: true, side: 2 }).range(to));
-        }
-      }
-      deco = Decoration.set(ranges, true);
-    }
-    return deco;
-  },
-  provide: (f) => EditorView.decorations.from(f),
-});
-
 let lessonHooks: ReturnType<typeof initLessonMode> | null = null;
 let account: ReturnType<typeof initAccount> | null = null;
 
@@ -676,11 +547,6 @@ function classify(s: string): ValueKind {
   return "object";
 }
 
-let lastResults: LineResult[] = [];
-let lastError: string | null = null;
-let lastErrorLine = 0; // line that threw, from the worker; 0 when unknown
-let lastGoodResults: LineResult[] = []; // from the last run that finished, for lines above a syntax error
-
 // A lesson replays the instructor's typing a character at a time, so the code is briefly
 // broken mid-keystroke. While it plays, an error only shows if the code is still broken
 // SETTLE_MS after the last edit; until then the last good values and preview stay up.
@@ -723,7 +589,7 @@ function paintResults(): void {
   const shown = (d: string) => (stacked || !d.includes("\n") ? d : d.split("\n")[0] + " …");
 
   const sourceText = editor.state.doc.toString();
-  if (!lastError && lastResults.length === 0 && sourceText.trim().length === 0) {
+  if (!runner.error && runner.results.length === 0 && sourceText.trim().length === 0) {
     const ph = document.createElement("div");
     ph.className = "result-placeholder";
     ph.textContent = "Type some TS or JS. Each top-level value shows up next to its line.";
@@ -734,7 +600,7 @@ function paintResults(): void {
 
   // Several values from one line share its row.
   const byLine = new Map<number, LineResult[]>();
-  for (const r of lastResults) byLine.set(r.line, [...(byLine.get(r.line) ?? []), r]);
+  for (const r of runner.results) byLine.set(r.line, [...(byLine.get(r.line) ?? []), r]);
   for (const [line, rs] of [...byLine].sort((x, y) => x[0] - y[0])) {
     appendRow(
       line,
@@ -744,65 +610,10 @@ function paintResults(): void {
     );
   }
 
-  const err = scratchError();
-  if (err) appendRow(err.line, "error: " + err.message, "error", lastError ?? "");
+  const err = runner.placedError();
+  if (err) appendRow(err.line, "error: " + err.message, "error", runner.error ?? "");
   positionResults();
   applyInlineValues();
-}
-
-// Plain-language versions of the errors beginners hit most; the original stays on hover.
-const PLAIN_ERRORS: [RegExp, (m: RegExpMatchArray) => string][] = [
-  [/^Unterminated string constant/, () => "A string is missing its closing quote"],
-  [/^Unterminated template/, () => "A template string is missing its closing backtick (`)"],
-  [/^Unexpected token, expected "(.+)"/, (m) => `This line isn't finished: expected "${m[1]}" here (maybe a comma or a closing bracket)`],
-  [/^Unexpected token/, () => "This line isn't finished or has a typo"],
-  [/^Missing semicolon/, () => "Two statements run together: add a ; or a line break"],
-  [/^Identifier directly after number/, () => "A name runs straight into a number: add a space or an operator"],
-  [/^(\S+) is not defined/, (m) => `${m[1]} isn't defined (check the spelling, or define it first)`],
-  [/^Cannot read propert(?:y|ies) of (undefined|null) \(reading '(.+)'\)/, (m) => `Can't read .${m[2]} of ${m[1]}`],
-  [/^(\S+) is not a function/, (m) => `${m[1]} isn't a function, so it can't be called`],
-];
-
-/** The last opening bracket left unclosed in `src` (ignoring strings and comments), or "". */
-function unclosedBracket(src: string): string {
-  const stack: string[] = [];
-  const pairs: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
-  for (let i = 0; i < src.length; i++) {
-    const c = src[i];
-    if (c === '"' || c === "'" || c === "`") {
-      for (i++; i < src.length && src[i] !== c && src[i] !== "\n"; i++) if (src[i] === "\\") i++;
-    } else if (c === "/" && src[i + 1] === "/") {
-      while (i < src.length && src[i] !== "\n") i++;
-    } else if ("([{".includes(c)) stack.push(c);
-    else if (pairs[c] && stack[stack.length - 1] === pairs[c]) stack.pop();
-  }
-  return stack[stack.length - 1] ?? "";
-}
-
-/** The current scratchpad error, placed on a line, or null. */
-function scratchError(): { line: number; message: string } | null {
-  if (!lastError) return null;
-  // Syntax errors carry Babel's "(line:col)"; runtime errors carry the line that threw.
-  const at = lastError.match(/\((\d+):\d+\)/);
-  const line = at ? Number(at[1]) : lastErrorLine;
-  // The line is shown separately; drop Babel's internal file name and keep the column.
-  const raw = lastError.split("\n")[0].replace(/^\/?user\.\w+:\s*/, "");
-  const column = raw.match(/\(\d+:(\d+)\)/)?.[1];
-  const bare = raw.replace(/\s*\(\d+:\d+\)/, "");
-  const plain = PLAIN_ERRORS.find(([re]) => re.test(bare));
-  let message = plain ? plain[1](bare.match(plain[0])!) : bare;
-  // "expected ','" at an unclosed ( [ or { is really "you never closed it"; say that instead.
-  if (at && /^Unexpected token, expected/.test(bare)) {
-    const open = unclosedBracket(editor.state.doc.toString());
-    if (open) message = `A ${open} is never closed`;
-  }
-  if (column) message += ` (column ${column})`;
-  // A runtime error stops everything after it; say so when there's code below.
-  if (!at && line && line < editor.state.doc.lines) message += ". Lines after this didn't run";
-  if (line) return { line, message };
-  // No line at all: say where it can't be earlier than, rather than pretending it's line 1.
-  const lastGood = Math.max(0, ...lastResults.map((r) => r.line));
-  return { line: lastGood + 1, message: lastGood ? `after line ${lastGood}: ${message}` : message };
 }
 
 /** Move each result row to its line's height in the editor (side-by-side layout only). */
@@ -851,200 +662,46 @@ resultsEl.addEventListener("wheel", (e) => {
   editor.scrollDOM.scrollTop += e.deltaY;
 }, { passive: false });
 
-const transport: Transport = createWorkerTransport();
-
-function createWorkerTransport(): Transport {
-  let worker: Worker | null = null;
-  let workerReady: Promise<void> = Promise.resolve();
-  const pendingReplies = new Map<
-    number,
-    { resolve: (v: EvalOutcome) => void; reject: (e: Error) => void }
-  >();
-  let evalSeq = 0;
-
-  function spawn(): void {
-    let resolveReady!: () => void;
-    let rejectReady!: (e: Error) => void;
-    workerReady = new Promise<void>((res, rej) => {
-      resolveReady = res;
-      rejectReady = rej;
-    });
-    worker = new Worker(new URL("./worker.ts", import.meta.url), {
-      type: "module",
-    });
-    worker.onmessage = (e: MessageEvent<WorkerMessage>) => {
-      const data = e.data;
-      if (!data) return;
-      if ("type" in data && data.type === "ready") {
-        resolveReady();
-        return;
-      }
-      if (!("id" in data)) return;
-      const entry = pendingReplies.get(data.id);
-      if (!entry) return;
-      pendingReplies.delete(data.id);
-      if (data.ok) entry.resolve({ results: data.results, ms: data.ms });
-      else entry.reject(Object.assign(new Error(data.error || "eval failed"), { line: data.line, results: data.results }));
-    };
-    worker.onerror = (e: ErrorEvent) => {
-      const msg =
-        e.message ||
-        (e.filename ? `${e.filename}:${e.lineno}` : "worker failed to start");
-      rejectReady(new Error(msg));
-      for (const [, entry] of pendingReplies) entry.reject(new Error(msg));
-      pendingReplies.clear();
-    };
-    worker.onmessageerror = () => {
-      rejectReady(new Error("worker message channel error"));
-    };
-  }
-  spawn();
-
-  return {
-    async evaluate(source: string): Promise<EvalOutcome> {
-      await workerReady;
-      const id = ++evalSeq;
-      return new Promise<EvalOutcome>((resolve, reject) => {
-        pendingReplies.set(id, { resolve, reject });
-        worker!.postMessage({ id, source });
-      });
-    },
-    stop(): void {
-      if (worker) {
-        for (const [, entry] of pendingReplies) entry.reject(new Error("stopped"));
-        pendingReplies.clear();
-        worker.terminate();
-      }
-      spawn();
-    },
-  };
-}
+const runner = createScratchRunner({
+  source: () => editor.state.doc.toString(),
+  onChange: paintResults,
+  onStatus: setStatus,
+  holdError: holdErrorWhilePlaying,
+});
 
 let timer: ReturnType<typeof setTimeout> | null = null;
-let inFlight = false;
-let pending = false;
-let evalGen = 0;
-
-async function runEval(): Promise<void> {
-  if (inFlight) {
-    pending = true;
-    return;
-  }
-  const myGen = ++evalGen;
-  inFlight = true;
-  const source = editor.state.doc.toString();
-  setStatus("running…", "running");
-  try {
-    const { results, ms } = await transport.evaluate(source);
-    if (myGen !== evalGen) return;
-    lastError = null;
-    lastResults = results;
-    lastGoodResults = results;
-    paintResults();
-    setStatus(
-      `${results.length} result${results.length === 1 ? "" : "s"} · ${ms}ms`,
-      "ok",
-    );
-  } catch (e) {
-    if (myGen !== evalGen) return;
-    const msg = e instanceof Error ? e.message : String(e);
-    if (holdErrorWhilePlaying()) return;
-    const partial = e as { line?: number; results?: LineResult[] };
-    lastError = msg;
-    lastErrorLine = partial.line ?? 0;
-    // Values from the lines before the throw are still true; keep them. A syntax error runs
-    // nothing, so lines above it keep their values from the last run that finished.
-    const syntaxLine = Number(msg.match(/\((\d+):\d+\)/)?.[1] ?? 0);
-    lastResults = syntaxLine ? lastGoodResults.filter((r) => r.line > 0 && r.line < syntaxLine) : (partial.results ?? []);
-    // Values a runtime error left behind are real too; a later syntax error can fall back on them.
-    if (!syntaxLine) lastGoodResults = lastResults;
-    paintResults();
-    setStatus(msg, "error");
-  } finally {
-    inFlight = false;
-    if (pending && myGen === evalGen) {
-      pending = false;
-      runEval();
-    }
-  }
-}
 
 function stopEval(): void {
   if (timer) {
     clearTimeout(timer);
     timer = null;
   }
-  evalGen++;
-  pending = false;
-  inFlight = false;
-  transport.stop();
-  setStatus("stopped", "ready");
+  runner.stop();
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c] as string);
-}
+const preview = previewFrame
+  ? createPreview(previewFrame, {
+      onStatus: setStatus,
+      holdError: holdErrorWhilePlaying,
+      onReset() {
+        clearConsole();
+        lastValues.clear();
+        applyInlineValues();
+      },
+      onValue(line, text) {
+        lastValues.set(line, text);
+        if (shouldShowInline()) applyInlineValues();
+      },
+      onConsole: appendConsole,
+    })
+  : null;
 
-// Babel is heavy; keep it out of the initial bundle and load it the first time
-// a playground actually renders. Cached across renders after that.
-let transpileMod: typeof import("./transpile.ts") | null = null;
-
-// The inspector, transpiled to plain JS once, inlined into the preview so its
-// console output matches the scratchpad's fidelity (Map(1) {…} etc.).
-let inspectorJs: string | null = null;
-async function getInspectorJs(): Promise<string> {
-  if (inspectorJs !== null) return inspectorJs;
-  if (!transpileMod) transpileMod = await import("./transpile.ts");
-  inspectorJs = transpileMod.transpile(inspectorRaw, { instrument: false }).code;
-  return inspectorJs;
-}
-
-// Each render gets a fresh nonce; console/error messages tagged with a stale
-// nonce (from a previous srcdoc still unloading) are dropped by the listener.
-let previewNonce = 0;
-let currentPreviewNonce = "";
-
-const escapeScriptClose = (code: string): string =>
-  code.replace(/<\/script/gi, "<\\/script");
-
-/** Assemble the playground document and load it into the sandboxed iframe. */
-async function renderPreview(): Promise<void> {
+/** Render the active playground tab into the preview. */
+function renderPreview(): void {
   const t = getActiveTab();
-  if (t.kind !== "playground" || !previewFrame) return;
+  if (t.kind !== "playground" || !preview) return;
   flushEditor();
-  const { html: htmlSrc = "", css: cssSrc = "", js: jsSrc = "" } = t;
-
-  const instrument = playgroundInline;
-  let userBody: string;
-  try {
-    if (!transpileMod) transpileMod = await import("./transpile.ts");
-    const { code } = transpileMod.transpile(jsSrc, { instrument });
-    userBody = `<script type="module">\n${escapeScriptClose(code)}\n</script>`;
-    setStatus("rendered", "ok");
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (holdErrorWhilePlaying()) return;
-    userBody = `<pre style="margin:16px;color:#b00020;font:13px ui-monospace,monospace;white-space:pre-wrap">${escapeHtml(msg)}</pre>`;
-    setStatus(msg, "error");
-  }
-
-  const inspector = await getInspectorJs();
-
-  // The active tab may have changed while Babel/JS loaded — don't clobber.
-  if (getActiveTab().id !== t.id) return;
-
-  const nonce = String(++previewNonce);
-  currentPreviewNonce = nonce;
-  clearConsole();
-  lastValues.clear();
-  applyInlineValues();
-
-  const bootstrap =
-    `<script type="module">\n${escapeScriptClose(inspector)}\n${escapeScriptClose(buildBridge(nonce, instrument))}\n</script>`;
-
-  previewFrame.srcdoc =
-    `<!doctype html><html><head><meta charset="utf-8">` +
-    `<style>${cssSrc}</style>${bootstrap}</head><body>\n${htmlSrc}\n${userBody}\n</body></html>`;
+  void preview.render(t, playgroundInline, () => getActiveTab().id === t.id);
 }
 
 // ---------- inline values (playground JS) ----------
@@ -1067,16 +724,7 @@ function applyInlineValues(): void {
   let values: InlineValue[] = [];
   if (t.kind !== "playground") {
     // Scratchpads have no results pane: a multi-line value can open in full under its line.
-    const byLine = new Map<number, string[]>();
-    for (const r of lastResults) if (r.line > 0) byLine.set(r.line, [...(byLine.get(r.line) ?? []), r.display]);
-    values = [...byLine].map(([line, texts]) => {
-      const text = texts.join("\n\n");
-      return texts.length > 1 || text.includes("\n")
-        ? { line, text, expandable: true }
-        : { line, text };
-    });
-    const err = scratchError();
-    if (err) values.push({ line: err.line, text: err.message, error: true });
+    values = runner.inlineValues();
   } else if (shouldShowInline()) {
     values = [...lastValues.entries()]
       .filter(([, text]) => text !== "undefined")
@@ -1108,22 +756,6 @@ function appendConsole(level: string, text: string): void {
   if (consoleCountEl) consoleCountEl.textContent = String(consoleCount);
 }
 
-window.addEventListener("message", (e: MessageEvent) => {
-  const d = e.data as PreviewMessage | undefined;
-  if (!d || d.source !== PREVIEW_SOURCE) return;
-  // Only trust the current preview frame, and only its current render.
-  if (previewFrame && e.source !== previewFrame.contentWindow) return;
-  if (d.nonce !== currentPreviewNonce) return;
-  if (d.type === "value") {
-    if (typeof d.line === "number") {
-      lastValues.set(d.line, (d.parts || [])[0] ?? "");
-      if (shouldShowInline()) applyInlineValues();
-    }
-    return;
-  }
-  appendConsole(d.level, (d.parts || []).join(" "));
-});
-
 document.getElementById("console-clear")?.addEventListener("click", clearConsole);
 document.getElementById("console-toggle")?.addEventListener("click", () => {
   document.getElementById("console-drawer")?.classList.toggle("collapsed");
@@ -1132,8 +764,8 @@ document.getElementById("console-toggle")?.addEventListener("click", () => {
 /** Route a run/render to the right engine based on the active tab kind. */
 function runActive(): void {
   lessonHooks?.onRun();
-  if (getActiveTab().kind === "playground") void renderPreview();
-  else void runEval();
+  if (getActiveTab().kind === "playground") renderPreview();
+  else void runner.run();
 }
 
 function schedule(): void {
@@ -1254,8 +886,7 @@ function syncViewToActiveTab(): void {
   renderPanelTabs();
   // Values belong to whatever tab last rendered; drop them until this tab re-runs.
   lastValues.clear();
-  lastResults = [];
-  lastError = null;
+  runner.clear();
   applyInlineValues();
 }
 
