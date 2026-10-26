@@ -119,6 +119,8 @@ export async function startLesson(slug: string) {
   let parse: ((src: string) => unknown) | null = null;
   /** The student's copy while it's on screen; null while the lesson is. */
   let copy: LessonCopy | null = null;
+  /** Whether the open copy is worth keeping: it was saved before, or the student changed it. */
+  let copyKept = false;
   /** Shown instead of the intro when the lesson picks up where the student left off. */
   let resumeNote: string | null = null;
 
@@ -142,6 +144,7 @@ export async function startLesson(slug: string) {
         editMarks,
         EditorView.updateListener.of((u) => {
           if (!copy || !u.docChanged || u.transactions.every((t) => t.annotation(loading))) return;
+          copyKept = true;
           copy.files[editorSlot] = u.state.doc.toString();
           copy.edits[editorSlot] = u.state.field(editsField)?.toJSON();
           saveSoon();
@@ -298,7 +301,7 @@ export async function startLesson(slug: string) {
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   function saveNow() {
     clearTimeout(saveTimer);
-    if (!copy) return;
+    if (!copy || !copyKept) return; // opening Your turn without changing anything leaves no copy behind
     savedEl.textContent = saveCopy(copy) ? "Saved on this device" : "Couldn't save on this device: your browser's storage is full or blocked";
   }
   function saveSoon() {
@@ -343,6 +346,7 @@ export async function startLesson(slug: string) {
     shownMs = origin;
     audio.currentTime = origin / 1000;
     const existing = findCopy(slug, origin);
+    copyKept = !!existing;
     copy = existing ?? {
       slug,
       originMs: origin,

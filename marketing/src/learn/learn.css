@@ -459,3 +459,133 @@ select.lp-chip option { background: var(--card); }
   .lp-cc-long { display: none; }
   .lp-cc-short { display: inline; font-weight: 700; }
 }
+
+/* ---------- course page ---------- */
+
+.cp-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 32px;
+}
+.cp-brand { min-height: 44px; display: inline-flex; align-items: center; text-decoration: none; color: var(--muted); font-variation-settings: "CASL" 1, "MONO" 1; font-size: 16px; }
+.cp-toplink { min-height: 44px; display: inline-flex; align-items: center; text-decoration: none; color: var(--muted); font-size: 14px; }
+.cp-brand:hover, .cp-toplink:hover { color: var(--ink); }
+
+.cp { max-width: 960px; margin: 0 auto; padding: 36px 32px 80px; display: flex; flex-direction: column; gap: 56px; }
+
+.cp-hero { display: flex; flex-wrap: wrap; gap: 36px; align-items: flex-start; }
+.cp-photo {
+  width: 132px;
+  height: 132px;
+  flex: none;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--raise);
+  font-size: 52px;
+  font-weight: 700;
+  box-shadow: 0 0 0 4px var(--ground), 0 0 0 8px var(--teacher);
+}
+.cp-photo img { width: 100%; height: 100%; object-fit: cover; }
+.cp-hero-text { flex: 1 1 480px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.cp-by { margin: 0; font-size: 15px; color: var(--muted); }
+.cp-hero h1 { margin: 0; font-size: 52px; line-height: 1.05; font-weight: 700; letter-spacing: -0.02em; text-wrap: balance; font-variation-settings: "CASL" 0.7, "MONO" 0; }
+.cp-intro { margin: 0; font-size: 19px; line-height: 1.55; color: var(--ink-2); max-width: 56ch; }
+.cp-go { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; margin-top: 10px; }
+.cp-cta {
+  min-height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 24px;
+  border-radius: 999px;
+  background: var(--teacher);
+  color: var(--ground);
+  text-decoration: none;
+  font-size: 17px;
+  font-weight: 700;
+}
+.cp-cta:hover { background: #f4b47a; }
+.cp-done-count { font-size: 15px; color: var(--muted); }
+
+.cp-lessons { display: flex; flex-direction: column; gap: 14px; }
+.cp h2 { margin: 0; font-size: 24px; font-weight: 700; font-variation-settings: "CASL" 0.7, "MONO" 0; }
+.cp-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.cp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; padding: 18px 20px; border-radius: 16px; }
+.cp-row.done { background: #1f1a16; }
+.cp-row.next { background: #2a221c; box-shadow: inset 0 0 0 2px var(--teacher); padding-block: 22px; }
+.cp-mark {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 0 2px var(--line);
+  color: var(--muted);
+  font-weight: 600;
+}
+.cp-tick { display: none; }
+.cp-row.done .cp-mark { background: var(--student); color: #14201c; box-shadow: none; }
+.cp-row.done .cp-num { display: none; }
+.cp-row.done .cp-tick { display: block; }
+.cp-row.next .cp-mark { box-shadow: inset 0 0 0 2px var(--teacher); color: var(--teacher); font-weight: 700; }
+.cp-row-text { flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cp-state { font-size: 13px; font-weight: 600; color: #f0c08f; }
+.cp-state:empty { display: none; }
+.cp-row-title { font-size: 19px; font-weight: 600; text-decoration: none; color: var(--ink-2); }
+.cp-row.done .cp-row-title, .cp-row.next .cp-row-title { color: var(--ink); }
+.cp-row.next .cp-row-title { font-size: 21px; font-weight: 700; }
+.cp-row-title:hover { text-decoration: underline; text-underline-offset: 4px; }
+.cp-row-meta { font-size: 14px; color: var(--muted); }
+.cp-copy, .cp-start {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  border-radius: 999px;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+}
+.cp-copy[hidden], .cp-start[hidden] { display: none; }
+.cp-copy { background: rgb(127 203 181 / 0.12); color: #9fdcc9; }
+.cp-copy:hover { background: rgb(127 203 181 / 0.2); }
+.cp-start { background: var(--teacher); color: var(--ground); font-size: 15px; font-weight: 700; padding: 0 20px; }
+.cp-start:hover { background: #f4b47a; }
+.cp-saved { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
+
+.cp-how { display: flex; flex-wrap: wrap; gap: 20px 28px; padding: 28px; border-radius: 18px; background: #1f1a16; }
+.cp-how h2 { flex: 1 1 100%; font-size: 20px; }
+.cp-how p { flex: 1 1 240px; min-width: 0; margin: 0; font-size: 16px; line-height: 1.55; color: var(--ink-2); }
+.cp-how strong { color: var(--ink); }
+.cp-how .cp-how-watch { color: var(--teacher); }
+.cp-how .cp-how-try { color: var(--student); }
+
+@media (max-width: 700px) {
+  .cp-top { padding: 4px 16px; }
+  .cp { padding: 16px 16px 48px; gap: 40px; }
+  .cp-hero { gap: 16px; }
+  .cp-photo { width: 76px; height: 76px; font-size: 30px; box-shadow: 0 0 0 3px var(--ground), 0 0 0 6px var(--teacher); }
+  .cp-hero h1 { font-size: 36px; }
+  .cp-intro { font-size: 17px; }
+  .cp-go { flex-direction: column; align-items: stretch; gap: 10px; }
+  .cp-cta { width: 100%; box-sizing: border-box; }
+  .cp-done-count { text-align: center; }
+  .cp-row { flex-wrap: nowrap; gap: 14px; padding: 14px; }
+  .cp-row.next { padding-block: 16px; }
+  .cp-row-text { flex: 1; }
+  .cp-row-title { font-size: 17px; }
+  .cp-row.next .cp-row-title { font-size: 18px; }
+  /* Round icon buttons, so long titles keep their room. */
+  .cp-copy, .cp-start { width: 44px; padding: 0; justify-content: center; flex: none; }
+  .cp-copy-label, .cp-start-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .cp-how { padding: 22px 20px; }
+}
