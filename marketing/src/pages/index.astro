@@ -4,7 +4,7 @@ import Button from '@codellyson/justui/astro/Button.astro';
 import ThemeToggle from '@codellyson/justui/astro/ThemeToggle.astro';
 import EditorEmbed from '../components/EditorEmbed.astro';
 
-const lessonUrl = '/web/?lesson=array-basics';
+const lessonUrl = '/learn/';
 const repoUrl = 'https://github.com/codellyson/justrunjs';
 
 const FAQ = [
@@ -52,7 +52,7 @@ const softwareJsonLd = {
   '@type': 'SoftwareApplication',
   name: 'justrunjs',
   description:
-    'A JavaScript scratchpad with inline values, and narrated coding lessons that replay in the same editor. Pause a lesson, change the code, run it, and return to the lesson.',
+    'A JavaScript scratchpad with inline values, and narrated coding lessons that replay in a live editor. Pause a lesson, change the code, run it, and return to the lesson.',
   applicationCategory: 'DeveloperApplication',
   operatingSystem: 'Web',
   offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
@@ -86,7 +86,7 @@ const faqJsonLd = {
           </p>
           <p class="text-base text-secondary leading-relaxed max-w-xl">
             Type TypeScript or JavaScript and each line's value appears next to
-            it as you type. Lessons play in the same editor: pause whenever you
+            it as you type. Lessons play in a live editor: pause whenever you
             like, change the code, run it, then go back to the lesson where you
             left it. Nothing to install, and no account needed.
           </p>

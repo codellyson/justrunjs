@@ -11,19 +11,16 @@ import "../../styles/global.css";
 import "../../web/style.css";
 import { BUILT_IN_THEMES } from "../../lib/theme-plugins";
 import { EXAMPLE_CATEGORIES } from "../../web/examples";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import course from "../../learn/course.json";
+import { formatTime } from "../../web/lesson";
 
-// Published lessons are whatever sits in public/lessons; list them at build time.
+// The course's lessons, in course order; each has its page at /learn/<slug>.
 // Relative to the project root (Astro's cwd): import.meta.url points into dist/ once bundled.
-const lessonsDir = "public/lessons";
-const LESSONS = readdirSync(lessonsDir)
-  .filter((f) => f.endsWith(".json"))
-  .map((f) => {
-    const l = JSON.parse(readFileSync(`${lessonsDir}/${f}`, "utf8"));
-    const secs = Math.floor(l.durationMs / 1000); // same as the player's clock
-    return { slug: f.slice(0, -5), title: l.title, kind: l.kind, language: l.language, length: `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}` };
-  })
-  .sort((a, b) => a.title.localeCompare(b.title));
+const LESSONS = course.lessons.map((slug) => {
+  const l = JSON.parse(readFileSync(`public/lessons/${slug}.json`, "utf8"));
+  return { slug, title: l.title, kind: l.kind, language: l.language, length: formatTime(l.durationMs) };
+});
 ---
 
 <!doctype html>
@@ -32,6 +29,13 @@ const LESSONS = readdirSync(lessonsDir)
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>justrunjs — in your browser</title>
+    <script is:inline>
+      // Lessons moved to their own pages; old /web/?lesson=<name> links still work.
+      (function () {
+        var lesson = new URLSearchParams(location.search).get("lesson");
+        if (lesson) location.replace("/learn/" + encodeURIComponent(lesson));
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
@@ -134,19 +138,9 @@ const LESSONS = readdirSync(lessonsDir)
           <span id="save-status" class="save-status" role="status" aria-live="polite"></span>
           <button id="btn-new-tab" class="tab-new" title="New tab" aria-label="New tab">+</button>
         </div>
-        <div id="lesson-head" class="lesson-head hidden" role="status" aria-live="polite"></div>
         <div id="panel-tabs" class="panel-tabs hidden" role="tablist"></div>
         <div id="editor-host"></div>
-        <div id="lesson-bar" class="lesson-bar hidden" role="toolbar" aria-label="Lesson"></div>
-        {LESSONS.length > 0 && (
-          <section id="lesson-invite" class="lesson-bar lesson-invite hidden" aria-label="Lessons">
-            <p class="lesson-invite-text">New to coding? Follow a narrated lesson right here in the editor. Pause anytime and try things yourself.</p>
-            {LESSONS.map((l) => (
-              <a class="lesson-btn" href={`/web/?lesson=${l.slug}`}>▶ {l.title} · {l.length}</a>
-            ))}
-            <button type="button" class="lesson-btn lesson-invite-dismiss" id="lesson-invite-dismiss">Not now</button>
-          </section>
-        )}
+        <div id="lesson-bar" class="lesson-bar hidden" role="toolbar" aria-label="Lesson recording"></div>
       </div>
       <div id="splitter" aria-hidden="true"></div>
       <div id="results">
@@ -188,14 +182,14 @@ const LESSONS = readdirSync(lessonsDir)
     <div id="examples-popover" class="examples-popover hidden" role="dialog" aria-label="Examples and lessons">
       <div class="examples-header">
         <span class="examples-heading">Examples &amp; lessons</span>
-        <span class="examples-sub">Lessons play here; examples open in a new tab</span>
+        <span class="examples-sub">Lessons open in the classroom; examples open in a new tab</span>
       </div>
       <div class="examples-scroll">
         {LESSONS.length > 0 && (
           <div class="examples-group">
             <div class="examples-group-title">Lessons</div>
             {LESSONS.map((l) => (
-              <a class="example-item" href={`/web/?lesson=${l.slug}`}>
+              <a class="example-item" href={`/learn/${l.slug}`}>
                 <span class="example-item-top">
                   <span class="example-title">{l.title}</span>
                   <span class:list={["example-lang", l.kind === "playground" ? "lang-play" : l.language === "typescript" ? "lang-ts" : "lang-js"]}>
@@ -331,8 +325,6 @@ const LESSONS = readdirSync(lessonsDir)
         <div class="settings-title">Keyboard</div>
         <dl class="shortcut-list">
           <dt><kbd>⌘</kbd><kbd>↵</kbd></dt><dd>Run the code (Ctrl+Enter on Windows)</dd>
-          <dt><kbd>Space</kbd></dt><dd>Play or pause a lesson</dd>
-          <dt><kbd>←</kbd><kbd>→</kbd></dt><dd>Jump 5 seconds in a lesson</dd>
           <dt><kbd>Esc</kbd></dt><dd>Close a panel</dd>
           <dt><kbd>⌘</kbd><kbd>Delete</kbd></dt><dd>Close the focused tab</dd>
         </dl>

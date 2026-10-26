@@ -29,9 +29,10 @@ The lesson is not a video of an editor; it is the editor. Recorded edits replay 
 
 - **Scratchpad tabs:** TS/JS run in a Web Worker; each top-level expression's value appears beside its line. `npm:` imports load as ESM from esm.sh.
 - **Playground tabs:** HTML, CSS and JS panels render in a sandboxed iframe with a console.
-- **Recording:** the owner records a tab with their microphone; every edit, panel switch and run is logged against the audio clock, then saved as lesson JSON plus audio into `public/lessons/`.
-- **Playback:** `/learn/<name>` is the lesson page; audio drives a read-only editor that replays the instructor's changes, runs the code and shows values (the older `/web/?lesson=<name>` tab is being replaced). A student's first edit forks an ordinary tab (an "experiment") that saves, shares and reopens like any other.
-- **Accounts:** optional email-code sign-in. Signed-in students' experiments and lesson progress sync across devices; guests keep work on their device.
+- **Recording:** the owner records a tab with their microphone; every edit, panel switch and run is logged against the audio clock, then saved as lesson JSON plus audio into `public/lessons/` and listed in `src/learn/course.json`.
+- **Course page:** `/learn/` lists the lessons in `src/learn/course.json` (course name, intro, teacher, order) with each student's progress and copies.
+- **Playback:** `/learn/<name>` is the lesson page; audio drives a read-only editor that replays the instructor's changes, runs the code and shows values. Old `/web/?lesson=<name>` links redirect there. Clicking the code pauses the lesson and opens the student's own copy from that moment ("Your turn"); copies, progress and finished lessons are kept in the browser.
+- **Accounts:** optional email-code sign-in in the scratchpad; experiments made with the old in-editor player sync across devices. Lesson copies and progress on `/learn/` are kept on the device only, until sync is built for them.
 - Embedded on the landing page as a live editor.
 
 ## Capabilities and Constraints

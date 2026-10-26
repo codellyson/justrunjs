@@ -214,17 +214,15 @@ main {
   overflow: hidden;
   /* 40px file-tab bar, lesson header and panel-tab bar (0 when hidden), editor fills rest. */
   display: grid;
-  grid-template-rows: 40px auto auto 1fr auto;
+  grid-template-rows: 40px auto 1fr auto;
 }
 
 /* Pinned rows: #panel-tabs is display:none on scratchpad tabs, and auto-placement
  * would then shift the editor into the panel row and the lesson bar into 1fr. */
 .tab-bar { grid-row: 1; }
-#lesson-head { grid-row: 2; }
-#panel-tabs { grid-row: 3; }
-#editor-host { grid-row: 4; }
-#lesson-bar,
-#lesson-invite { grid-row: 5; }
+#panel-tabs { grid-row: 2; }
+#editor-host { grid-row: 3; }
+#lesson-bar { grid-row: 4; }
 
 #editor-host {
   position: relative;
@@ -1050,21 +1048,6 @@ select.lesson-btn {
 select.lesson-btn option { background: rgb(var(--bg-secondary)); color: rgb(var(--text-primary)); }
 
 .lesson-time { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-/* Narration line (or the intro before Play), across the top of the bar. */
-.lesson-caption {
-  flex-basis: 100%;
-  color: rgb(var(--text-primary));
-  /* The instructor's voice: the most important text in a lesson. */
-  font-size: 15px;
-  line-height: 1.45;
-  max-width: 70ch;
-  min-height: 1.45em;
-}
-.lesson-caption.lesson-intro { color: rgb(var(--text-secondary)); }
-.lesson-caption:empty { display: none; }
-.lesson-done { font-weight: 600; color: rgb(var(--text-primary)); }
-.lesson-seek { flex: 1 1 120px; min-width: 80px; accent-color: rgb(var(--accent)); }
-.lesson-mode { color: rgb(var(--accent)); }
 .lesson-dot {
   width: 8px;
   height: 8px;
@@ -1074,67 +1057,6 @@ select.lesson-btn option { background: rgb(var(--bg-secondary)); color: rgb(var(
 }
 @keyframes lesson-pulse { 50% { opacity: 0.3; } }
 
-/* Says which screen this is: the instructor's lesson, or the student's own experiment. */
-.lesson-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  padding: 7px 14px;
-  border-bottom: 1px solid rgb(var(--border));
-  background: rgb(var(--accent) / 0.12);
-  color: rgb(var(--text-primary));
-  font-size: 13px;
-}
-.lesson-head.hidden { display: none; }
-.lesson-head-label {
-  flex: none;
-  padding: 2px 7px;
-  border-radius: 4px;
-  background: rgb(var(--accent));
-  color: rgb(var(--accent-text));
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.lesson-head-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 600;
-}
-.lesson-head-state {
-  flex: none;
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: rgb(var(--text-secondary));
-  font-variant-numeric: tabular-nums;
-}
-.lesson-head-state.playing { color: rgb(var(--text-primary)); }
-.lesson-head-state.playing::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: rgb(var(--accent));
-  animation: lesson-pulse 1.2s ease-in-out infinite;
-}
-@media (prefers-reduced-motion: reduce) { .lesson-head-state.playing::before { animation: none; } }
-.lesson-head .lesson-btn { flex: none; margin-left: auto; }
-#editor[data-mode="experiment"] .lesson-head { background: rgb(var(--bg-secondary)); }
-#editor[data-mode="experiment"] .lesson-head-label {
-  background: transparent;
-  color: rgb(var(--text-primary));
-  box-shadow: inset 0 0 0 1px rgb(var(--border));
-}
-/* The lesson's code is the instructor's: frame it in the accent. */
-#editor[data-mode="lesson"] #editor-host { box-shadow: inset 0 0 0 1px rgb(var(--accent) / 0.45); }
-.tab.tab-lesson { color: rgb(var(--accent)); font-weight: 600; }
-.tab.tab-lesson.active { box-shadow: inset 0 2px 0 rgb(var(--accent)); }
 @media (prefers-reduced-motion: reduce) { .lesson-dot { animation: none; } }
 
 /* ---------- account popover ---------- */
@@ -1203,25 +1125,13 @@ select.lesson-btn option { background: rgb(var(--bg-secondary)); color: rgb(var(
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1.4fr) minmax(0, 1fr);
   }
-  /* The caption must not eat the code on a small screen: two lines at most. */
-  .lesson-caption {
-    font-size: 13px;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
   #splitter { display: none; }
   #results {
     border-left: 0;
     border-top: 1px solid rgb(var(--border));
   }
   .console-drawer { height: 96px; }
-  /* Keep Play, time, slider and speed on one row; the slider gives way first. */
   .lesson-bar { gap: 8px; padding: 6px 8px; }
-  .lesson-seek { flex-basis: 0; min-width: 48px; }
-  /* Reading text needs a real gutter, not the controls' tight padding. */
-  .lesson-invite { padding: 12px 16px; }
 
   /* Popovers become sheets above the bottom bar. */
   .settings-popover,
@@ -1240,11 +1150,10 @@ select.lesson-btn option { background: rgb(var(--bg-secondary)); color: rgb(var(
 @media (pointer: coarse) {
   .icon-btn { width: 44px; height: 44px; }
   .tab-new { width: 48px; }
-  #editor { grid-template-rows: 44px auto auto 1fr auto; }
+  #editor { grid-template-rows: 44px auto 1fr auto; }
   .panel-tab { min-height: 44px; padding-inline: 16px; }
   .tab .tab-close { width: 32px; height: 32px; }
   .lesson-btn { min-height: 44px; min-width: 44px; }
-  .lesson-seek { min-height: 44px; }
   /* iOS zooms into any focused field under 16px. */
   .account-input,
   .settings-row input[type="number"] { font-size: 16px; }
@@ -1348,16 +1257,6 @@ main.no-results #results { display: none; }
   white-space: pre-wrap;
 }
 
-/* ---------- first visit: lesson invite, empty editor ---------- */
+/* ---------- first visit: empty editor ---------- */
 
-.lesson-invite-text {
-  flex-basis: 100%;
-  margin: 0;
-  color: rgb(var(--text-primary));
-  font-size: 14px;
-  line-height: 1.45;
-  max-width: 70ch;
-}
-a.lesson-btn { text-decoration: none; display: inline-flex; align-items: center; }
-.lesson-invite-dismiss { border-color: transparent; color: rgb(var(--text-secondary)); }
 .cm-placeholder { color: rgb(var(--text-muted)); font-style: italic; }

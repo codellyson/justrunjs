@@ -28,7 +28,7 @@ import {
   type ShareLanguage,
   type SharedBin,
 } from "./share.ts";
-import { initLessonMode, slotLoadAnnotations } from "./lesson-mode.ts";
+import { initRecorder, slotLoadAnnotations } from "./recorder.ts";
 import { initAccount } from "./account.ts";
 import { wirePopover } from "./popover.ts";
 import { inlineValuesField, setInlineValues, type InlineValue } from "./inline-values.ts";
@@ -75,9 +75,7 @@ interface Tab {
   jsLanguage?: LanguageId;
   /** Which sub-panel the editor is currently showing for a playground tab. */
   activePanel?: PanelId;
-  /** Set on the tab playing a recorded lesson; never persisted. */
-  lessonSource?: string;
-  /** Set on an experiment forked from a recorded lesson. */
+  /** Set on an experiment forked from a lesson in the old in-editor player. */
   lesson?: { slug: string; originMs: number };
 }
 
@@ -236,9 +234,7 @@ function flushEditor(): void {
 
 function persistTabs(): void {
   flushEditor();
-  const kept = tabs.filter((t) => !t.lessonSource);
-  const keptActive = kept.some((t) => t.id === activeId) ? activeId : kept[0]?.id;
-  localStorage.setItem(TABS_KEY, JSON.stringify({ tabs: kept, activeId: keptActive }));
+  localStorage.setItem(TABS_KEY, JSON.stringify({ tabs, activeId }));
   account?.onPersist();
 }
 
@@ -456,7 +452,7 @@ function currentMode(): Mode {
     : "dark";
 }
 
-let lessonHooks: ReturnType<typeof initLessonMode> | null = null;
+let recorder: ReturnType<typeof initRecorder> | null = null;
 let account: ReturnType<typeof initAccount> | null = null;
 
 const _bootTab = getActiveTab();
@@ -505,10 +501,9 @@ const editor = new EditorView({
       Prec.highest(highlightCompartment.of(highlightFor(currentMode()))),
       editorTheme,
       EditorView.updateListener.of((update) => {
-        if (lessonHooks?.onUpdate(update)) return; // a fork is loading its own text
+        recorder?.onUpdate(update);
         if (update.geometryChanged || update.heightChanged) positionResults();
         if (update.docChanged) {
-          lastEditAt = performance.now();
           persistTabs();
           schedule();
         }
@@ -545,20 +540,6 @@ function classify(s: string): ValueKind {
   }
   if (s.startsWith("Symbol(")) return "symbol";
   return "object";
-}
-
-// A lesson replays the instructor's typing a character at a time, so the code is briefly
-// broken mid-keystroke. While it plays, an error only shows if the code is still broken
-// SETTLE_MS after the last edit; until then the last good values and preview stay up.
-const SETTLE_MS = 1200;
-let lastEditAt = 0;
-let settleTimer: ReturnType<typeof setTimeout> | undefined;
-function holdErrorWhilePlaying(): boolean {
-  const since = performance.now() - lastEditAt;
-  if (!lessonHooks?.isPlaying() || since >= SETTLE_MS) return false;
-  clearTimeout(settleTimer);
-  settleTimer = setTimeout(runActive, SETTLE_MS - since + 50);
-  return true;
 }
 
 // Beside the editor, each value sits at its source line's height and scrolls with it.
@@ -666,7 +647,6 @@ const runner = createScratchRunner({
   source: () => editor.state.doc.toString(),
   onChange: paintResults,
   onStatus: setStatus,
-  holdError: holdErrorWhilePlaying,
 });
 
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -682,8 +662,7 @@ function stopEval(): void {
 const preview = previewFrame
   ? createPreview(previewFrame, {
       onStatus: setStatus,
-      holdError: holdErrorWhilePlaying,
-      onReset() {
+          onReset() {
         clearConsole();
         lastValues.clear();
         applyInlineValues();
@@ -763,7 +742,7 @@ document.getElementById("console-toggle")?.addEventListener("click", () => {
 
 /** Route a run/render to the right engine based on the active tab kind. */
 function runActive(): void {
-  lessonHooks?.onRun();
+  recorder?.onRun();
   if (getActiveTab().kind === "playground") renderPreview();
   else void runner.run();
 }
@@ -899,7 +878,6 @@ function activateTab(id: string): void {
   syncViewToActiveTab();
   persistTabs();
   schedule();
-  lessonHooks?.onTabChange();
 }
 
 function nextUntitled(lang: LanguageId): string {
@@ -980,7 +958,7 @@ function openPlaygroundTab(
 function closeTab(id: string): void {
   if (tabs.length <= 1) return;
   const idx = tabs.findIndex((t) => t.id === id);
-  if (idx === -1 || tabs[idx].lessonSource) return;
+  if (idx === -1) return;
   void account?.onClose(tabs[idx]);
   tabs.splice(idx, 1);
   if (activeId === id) {
@@ -991,7 +969,6 @@ function closeTab(id: string): void {
   }
   renderTabs();
   persistTabs();
-  lessonHooks?.onTabChange();
 }
 
 function toggleTabLang(id: string): void {
@@ -1037,7 +1014,7 @@ function switchPanel(p: PanelId): void {
   t.activePanel = p;
   loadActiveIntoEditor();
   renderPanelTabs();
-  lessonHooks?.onOpen(p);
+  recorder?.onOpen(p);
   // Same tab/render — show its values when landing on JS, hide otherwise.
   applyInlineValues();
   persistTabs();
@@ -1098,26 +1075,22 @@ function renderTabs(): void {
     name.className = "tab-name";
     name.textContent = t.name;
     el.title = t.name; // long experiment names are cut off in the strip
-    if (t.lessonSource) el.classList.add("tab-lesson");
 
     el.addEventListener("click", () => activateTab(t.id));
 
     el.appendChild(lang);
     el.appendChild(name);
-    // A lesson tab can't be closed, so it gets no close control.
-    if (!t.lessonSource) {
-      const close = document.createElement("button");
-      close.className = "tab-close";
-      close.textContent = "×";
-      close.tabIndex = -1;
-      close.title = "Close (⌘ Delete)";
-      close.setAttribute("aria-label", `Close ${t.name}`);
-      close.addEventListener("click", (e) => {
-        e.stopPropagation();
-        closeTab(t.id);
-      });
-      el.appendChild(close);
-    }
+    const close = document.createElement("button");
+    close.className = "tab-close";
+    close.textContent = "×";
+    close.tabIndex = -1;
+    close.title = "Close (⌘ Delete)";
+    close.setAttribute("aria-label", `Close ${t.name}`);
+    close.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeTab(t.id);
+    });
+    el.appendChild(close);
     tabsEl.appendChild(el);
   }
   if (hadFocus) tabsEl.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
@@ -1131,7 +1104,7 @@ function renderSaveStatus(): void {
   const el = document.getElementById("save-status");
   if (!el) return;
   const t = getActiveTab();
-  const s = t.lessonSource || !account ? null : account.statusFor(t);
+  const s = account ? account.statusFor(t) : null;
   el.replaceChildren();
   el.classList.toggle("hidden", !s);
   el.classList.toggle("failed", !!s?.retry);
@@ -1213,26 +1186,6 @@ if (newTabBtn && newTabMenu) {
 
 renderTabs();
 
-// First visit without a lesson link: invite to a lesson until one is opened or the invite is dismissed.
-const INVITE_KEY = "runjs.lessonInviteDismissed";
-const invite = document.getElementById("lesson-invite");
-if (invite) {
-  const seenLessons = (() => {
-    try {
-      return JSON.parse(localStorage.getItem("runjs.lessonsDone") ?? "[]").length > 0 || tabs.some((t) => t.lesson);
-    } catch {
-      return false;
-    }
-  })();
-  const onLesson = new URLSearchParams(location.search).has("lesson");
-  invite.classList.toggle("hidden", onLesson || seenLessons || !!localStorage.getItem(INVITE_KEY));
-  document.getElementById("lesson-invite-dismiss")?.addEventListener("click", () => {
-    localStorage.setItem(INVITE_KEY, "1");
-    invite.classList.add("hidden");
-    editor.focus();
-  });
-}
-
 account = initAccount({
   tabs: () => tabs,
   addTabs: (list) => {
@@ -1247,25 +1200,7 @@ account = initAccount({
 account.onChange(renderSaveStatus);
 renderSaveStatus();
 
-lessonHooks = initLessonMode({
-  account,
-  editor,
-  tabs: () => tabs,
-  activeTab: getActiveTab,
-  setActiveId: (id) => {
-    activeId = id;
-  },
-  activateTab,
-  switchPanel,
-  loadActiveIntoEditor,
-  refreshChrome: () => {
-    renderTabs();
-    syncViewToActiveTab();
-  },
-  runActive,
-  uniqueTabName,
-  showToast,
-});
+recorder = initRecorder({ activeTab: getActiveTab, showToast });
 
 // ---------- toast ----------
 

@@ -1,6 +1,6 @@
 // Learner accounts: email sign-in, experiments synced to the account, lesson progress.
 // Guests keep everything on this device; signing in uploads their experiments once.
-import type { LessonTab } from "./lesson-mode.ts";
+import type { EditorTab as LessonTab } from "./recorder.ts";
 import { wirePopover } from "./popover.ts";
 
 type SyncedTab = LessonTab & { syncedAt?: number };
