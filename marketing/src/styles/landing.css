@@ -98,7 +98,20 @@
 
 /* ---------- scratchpad ---------- */
 
-.ld-pad { padding-block: 0 104px; }
+.ld-pad { padding-block: 96px 104px; }
+.ld-pad-go { margin-top: 28px; }
+.ld-quiet {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 20px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgb(var(--border));
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 600;
+}
+.ld-quiet:hover { box-shadow: inset 0 0 0 1px rgb(var(--text-muted)); }
 .ld h2 { margin: 0 0 10px; font-size: 34px; line-height: 1.15; font-weight: 700; letter-spacing: -0.015em; text-wrap: balance; font-variation-settings: "CASL" 0.7, "MONO" 0; }
 .ld-sub { margin: 0 0 32px; max-width: 60ch; font-size: 17px; line-height: 1.55; color: rgb(var(--text-secondary)); }
 .ld-shot { display: block; width: 100%; height: auto; border-radius: 16px; box-shadow: 0 0 0 1px rgb(var(--border)); }
@@ -145,7 +158,8 @@
   .ld-learn { justify-content: center; }
   .ld-note { text-align: center; }
   .ld-demo iframe { height: 460px; border-radius: 16px; }
-  .ld-pad { padding-block: 0 64px; }
+  .ld-pad { padding-block: 56px 64px; }
+  .ld-quiet { justify-content: center; }
   .ld h2 { font-size: 28px; }
   .ld-points { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .ld-lessons-in { gap: 28px; padding-block: 52px 56px; }

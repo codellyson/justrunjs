@@ -10,8 +10,8 @@ interface Props {
 }
 
 const {
-  title = 'crow: a JavaScript scratchpad with inline values, and lessons that play in it',
-  description = 'Type TypeScript or JavaScript and see each line\'s value next to it. Follow narrated lessons that replay in a live editor: pause, change the code, run it, and return. Runs in your browser. Open source.',
+  title = 'crow: learn to code in a live editor',
+  description = 'Narrated coding lessons that play in a live editor: watch the code type itself in, see each value beside its line, and take over the code at any moment. Plus a TypeScript and JavaScript scratchpad to keep practising. Free, in your browser.',
   jsonLd,
 } = Astro.props;
 
@@ -29,7 +29,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site).toString();
     <title>{title}</title>
     <meta name="description" content={description} />
 
-    <meta name="keywords" content="JavaScript scratchpad, TypeScript playground, RunJS alternative, inline values, ESM imports, npm browser" />
+    <meta name="keywords" content="learn to code, learn JavaScript, learn TypeScript, interactive coding lessons, live code editor, JavaScript scratchpad" />
     <meta name="author" content="codellyson" />
     <meta name="category" content="developer-tools" />
     <meta name="mobile-web-app-capable" content="yes" />

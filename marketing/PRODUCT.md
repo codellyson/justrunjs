@@ -8,16 +8,16 @@ web
 
 ## Users
 
-Two audiences, served equally:
+crow is a learning tool first. Two audiences, in this order:
 
-- **People writing JavaScript who want instant feedback.** They open crow to try an idea in TypeScript or JavaScript and see every top-level value beside its line, or to build a small HTML/CSS/JS page with a live preview. No install, no project setup.
-- **Students learning to code from the owner's recorded lessons.** Levels are mixed: complete beginners, people who know a little, and working developers learning a specific technique. They mostly watch and practise on a laptop, and sometimes use a phone to watch a lesson or review their work.
+1. **Students learning to code from the owner's recorded lessons.** Levels are mixed: complete beginners, people who know a little, and working developers learning a specific technique. They mostly watch and practise on a laptop, and sometimes use a phone to watch a lesson or review their work.
+2. **People writing JavaScript who want instant feedback.** They open the scratchpad to try an idea in TypeScript or JavaScript and see every top-level value beside its line, or to build a small HTML/CSS/JS page with a live preview. No install, no project setup. Students use the same scratchpad to keep practising between lessons.
 
 The owner is also a user: the one person who records and publishes lessons.
 
 ## Product Purpose
 
-crow is a browser scratchpad and playground that doubles as the owner's teaching platform. A lesson is narration plus every code change, replayed in the real editor: students can pause at any moment, edit the code, run their own version, and return to the instructor's exact state without losing their work. Success is a student following a lesson, experimenting, and coming back, and a developer getting an answer to "what does this evaluate to?" in seconds.
+crow is the owner's teaching platform: narrated lessons that play in a live editor, with a browser scratchpad and playground to keep practising in. A lesson is narration plus every code change, replayed in the real editor: students can pause at any moment, edit the code, run their own version, and return to the instructor's exact state without losing their work. Success is a student following a lesson, experimenting, and coming back, and a developer getting an answer to "what does this evaluate to?" in seconds.
 
 It is built for the owner to teach with, not as a commercial course marketplace.
 
@@ -33,7 +33,7 @@ The lesson is not a video of an editor; it is the editor. Recorded edits replay 
 - **Course page:** `/learn/` lists the lessons in `src/learn/course.json` (course name, intro, teacher, order) with each student's progress and copies.
 - **Playback:** `/learn/<name>` is the lesson page; audio drives a read-only editor that replays the instructor's changes, runs the code and shows values. Old `/web/?lesson=<name>` links redirect there. Clicking the code pauses the lesson and opens the student's own copy from that moment ("Your turn"); copies, progress and finished lessons are kept in the browser.
 - **Accounts:** optional email-code sign-in, on the course page or in the scratchpad. Signed in, a student's lesson copies, finished lessons and lesson positions sync across devices (when two devices change the same copy, both versions are kept); guests keep everything in their browser. Experiments made with the old in-editor player still sync from the scratchpad.
-- **Landing page:** developers first (the scratchpad), lessons second. Its hero is a real lesson playing muted and looping (`/learn/<name>?demo`), and its other pictures are screenshots captured from the running app; no drawn or invented UI. With no teacher photo in `course.json`, no stand-in avatar is shown anywhere.
+- **Landing page:** learning first ("Learn to code in a live editor", Start the course), the scratchpad second ("Keep practising"). Its hero is a real lesson playing muted and looping (`/learn/<name>?demo`), and its other pictures are screenshots captured from the running app; no drawn or invented UI. With no teacher photo in `course.json`, no stand-in avatar is shown anywhere.
 
 ## Capabilities and Constraints
 

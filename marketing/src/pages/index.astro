@@ -1,6 +1,6 @@
 ---
-// The landing page: for developers first (the scratchpad), with a real lesson playing as the
-// proof, then the lessons. Every picture of crow here is crow itself: the hero is the lesson page
+// The landing page: crow is a place to learn to code first (the lessons), and a scratchpad to
+// keep practising in second. A real lesson playing is the proof. Every picture of crow here is crow itself: the hero is the lesson page
 // in its demo mode, and the screenshots are captured from the running app.
 import Layout from '../layouts/Layout.astro';
 import '../styles/landing.css';
@@ -16,8 +16,8 @@ const softwareJsonLd = {
   '@type': 'SoftwareApplication',
   name: 'crow',
   description:
-    'A TypeScript and JavaScript scratchpad that shows each line\'s value as you type, with narrated coding lessons that replay in a live editor.',
-  applicationCategory: 'DeveloperApplication',
+    'Learn to code in a live editor: narrated lessons where the code types itself in, each value shows up beside its line, and you can take over the code at any moment. Plus a TypeScript and JavaScript scratchpad to keep practising.',
+  applicationCategory: 'EducationalApplication',
   operatingSystem: 'Web',
   offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
   url: Astro.site?.toString(),
@@ -38,16 +38,16 @@ const softwareJsonLd = {
     <main>
       <section class="ld-hero" aria-labelledby="ld-hero-h">
         <div class="ld-hero-text">
-          <h1 id="ld-hero-h">Write TypeScript or JavaScript. See every value as you type.</h1>
-          <p class="ld-lede">crow is a scratchpad in your browser. Nothing to install: each line's value shows up right beside it.</p>
+          <h1 id="ld-hero-h">Learn to code in a live editor.</h1>
+          <p class="ld-lede">Each lesson is me typing and talking you through the code. Every value shows up beside its line, and you can take over the code at any moment.</p>
           <div class="ld-actions">
-            <a class="ld-btn" href="/web/">Open the scratchpad</a>
-            <a class="ld-learn" href="/learn/">
-              Or learn it, one lesson at a time
+            <a class="ld-btn" href="/learn/">Start the course</a>
+            <a class="ld-learn" href="/web/">
+              Or just try some code in the scratchpad
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg>
             </a>
           </div>
-          <p class="ld-note">Free and open source. No account needed.</p>
+          <p class="ld-note">Free, and no account needed. {lessonCount} {lessonCount === 1 ? 'lesson' : 'lessons'} so far.</p>
         </div>
         <figure class="ld-demo">
           <iframe
@@ -59,9 +59,39 @@ const softwareJsonLd = {
         </figure>
       </section>
 
+
+      <section class="ld-lessons" aria-labelledby="ld-lessons-h">
+        <div class="ld-lessons-in">
+          <div class="ld-lessons-text">
+            <p class="ld-by">Lessons by {course.teacher.name}</p>
+            <h2 id="ld-lessons-h">Take over the code at any moment.</h2>
+            <p class="ld-sub">A lesson isn't a video of an editor. It is the editor: pause anywhere, change my code, run it, and pick the lesson back up where I paused.</p>
+            <ul class="ld-steps">
+              <li><strong class="ld-watch">Watch.</strong> I talk you through the code as I write it.</li>
+              <li><strong class="ld-try">Try it.</strong> Click the code to get your own copy to change and run.</li>
+              <li><strong>Come back.</strong> Pick the lesson up where I paused. Your copy stays saved.</li>
+            </ul>
+            <div class="ld-actions">
+              <a class="ld-btn ld-btn-student" href={`/learn/${firstLesson}`}>Start lesson 1</a>
+              <a class="ld-quiet" href="/learn/">See every lesson</a>
+            </div>
+          </div>
+          <div class="ld-shot-wrap">
+            <img
+              class="ld-shot ld-turn"
+              src="/landing/your-turn.webp"
+              width="2208"
+              height="928"
+              loading="lazy"
+              alt="A student's own copy of a lesson in crow: their new line is underlined in teal with its value, beside Continue the lesson and Reset to my code"
+            />
+          </div>
+        </div>
+      </section>
+
       <section class="ld-pad" aria-labelledby="ld-pad-h">
-        <h2 id="ld-pad-h">Answers in the margin, not in a console.</h2>
-        <p class="ld-sub">Try an idea, check what a line returns, poke at a package. The scratchpad runs as you type.</p>
+        <h2 id="ld-pad-h">Keep practising in the scratchpad.</h2>
+        <p class="ld-sub">Between lessons, or whenever you want to try an idea: TypeScript or JavaScript, nothing to install, and each line's value shows up right beside it.</p>
         <div class="ld-shot-wrap">
           <img
             class="ld-shot"
@@ -77,43 +107,15 @@ const softwareJsonLd = {
           <p><strong>Any npm package.</strong> Add <code>npm:</code> to an import and it loads in the browser.</p>
           <p><strong>Errors in plain words.</strong> On the line that caused them, and the lines above keep their values.</p>
         </div>
-      </section>
-
-      <section class="ld-lessons" aria-labelledby="ld-lessons-h">
-        <div class="ld-lessons-in">
-          <div class="ld-lessons-text">
-            <p class="ld-by">Lessons by {course.teacher.name}</p>
-            <h2 id="ld-lessons-h">Or learn it, one lesson at a time.</h2>
-            <p class="ld-sub">A lesson isn't a video of an editor. It is the editor: I type and talk, you watch each value appear, and you can take over the code at any moment.</p>
-            <ul class="ld-steps">
-              <li><strong class="ld-watch">Watch.</strong> I talk you through the code as I write it.</li>
-              <li><strong class="ld-try">Try it.</strong> Click the code to get your own copy to change and run.</li>
-              <li><strong>Come back.</strong> Pick the lesson up where I paused. Your copy stays saved.</li>
-            </ul>
-            <div class="ld-actions">
-              <a class="ld-btn ld-btn-student" href={`/learn/${firstLesson}`}>Start the course</a>
-              <span class="ld-note">{lessonCount} {lessonCount === 1 ? 'lesson' : 'lessons'} so far · free</span>
-            </div>
-          </div>
-          <div class="ld-shot-wrap">
-            <img
-              class="ld-shot ld-turn"
-              src="/landing/your-turn.webp"
-              width="2208"
-              height="928"
-              loading="lazy"
-              alt="A student's own copy of a lesson in crow: their new line is underlined in teal with its value, beside Continue the lesson and Reset to my code"
-            />
-          </div>
-        </div>
+        <a class="ld-quiet ld-pad-go" href="/web/">Open the scratchpad</a>
       </section>
     </main>
 
     <footer class="ld-foot">
       <span><strong>crow</strong> · open source, runs in your browser</span>
       <nav aria-label="Footer">
-        <a href="/web/">Scratchpad</a>
         <a href="/learn/">Lessons</a>
+        <a href="/web/">Scratchpad</a>
         <a href={repoUrl}>GitHub</a>
       </nav>
     </footer>

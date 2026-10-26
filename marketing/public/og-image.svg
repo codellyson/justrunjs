@@ -29,14 +29,14 @@
         font-weight="500"
         font-size="36"
         fill="#d6cbbd"
-        letter-spacing="-0.5">Write TypeScript or JavaScript.</text>
+        letter-spacing="-0.5">Learn to code in a live editor.</text>
   <text x="600" y="455"
         text-anchor="middle"
         font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
         font-weight="500"
         font-size="36"
         fill="#f0a35e"
-        letter-spacing="-0.5">See every value as you type.</text>
+        letter-spacing="-0.5">Take over the code at any moment.</text>
 
   <!-- Footer -->
   <text x="600" y="555"
