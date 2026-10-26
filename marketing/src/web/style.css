@@ -712,6 +712,9 @@ main {
 body.hide-line-numbers .cm-gutters { display: none; }
 
 /* Inline per-line values in the playground JS editor (RunJS-style). */
+.cm-inline-error { color: rgb(var(--danger)); font-style: normal; }
+.cm-error-line { background: rgb(var(--danger) / 0.1); }
+
 .cm-inline-value {
   /* Same readable tone as comments; muted text at partial opacity fell to 3.9:1. */
   color: color-mix(in srgb, rgb(var(--text-muted)) 50%, rgb(var(--text-secondary)));

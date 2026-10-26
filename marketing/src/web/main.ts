@@ -478,18 +478,18 @@ function currentMode(): Mode {
 // --- inline value decorations (playground JS: RunJS-style `⇒ value` at line end) ---
 
 class InlineValueWidget extends WidgetType {
-  constructor(readonly text: string) {
+  constructor(readonly text: string, readonly error = false) {
     super();
   }
   eq(other: InlineValueWidget): boolean {
-    return other.text === this.text;
+    return other.text === this.text && other.error === this.error;
   }
   toDOM(): HTMLElement {
     const span = document.createElement("span");
-    span.className = "cm-inline-value";
+    span.className = "cm-inline-value" + (this.error ? " cm-inline-error" : "");
     const firstLine = this.text.split("\n")[0];
     span.textContent =
-      "  ⇒ " + firstLine + (this.text.includes("\n") ? " …" : "");
+      (this.error ? "  ✕ " : "  ⇒ ") + firstLine + (this.text.includes("\n") ? " …" : "");
     return span;
   }
   ignoreEvent(): boolean {
@@ -497,7 +497,7 @@ class InlineValueWidget extends WidgetType {
   }
 }
 
-const setInlineValues = StateEffect.define<{ line: number; text: string }[]>();
+const setInlineValues = StateEffect.define<{ line: number; text: string; error?: boolean }[]>();
 
 const inlineValuesField = StateField.define<DecorationSet>({
   create: () => Decoration.none,
@@ -506,14 +506,15 @@ const inlineValuesField = StateField.define<DecorationSet>({
     for (const e of tr.effects) {
       if (!e.is(setInlineValues)) continue;
       const ranges = [];
-      for (const { line, text } of e.value) {
+      for (const { line, text, error } of e.value) {
         if (line < 1 || line > tr.state.doc.lines) continue;
-        const pos = tr.state.doc.line(line).to;
+        const { from, to } = tr.state.doc.line(line);
+        if (error) ranges.push(Decoration.line({ class: "cm-error-line" }).range(from));
         ranges.push(
           Decoration.widget({
-            widget: new InlineValueWidget(text),
+            widget: new InlineValueWidget(text, error),
             side: 1,
-          }).range(pos),
+          }).range(to),
         );
       }
       deco = Decoration.set(ranges, true);
@@ -668,21 +669,27 @@ function paintResults(): void {
     );
   }
 
-  if (lastError) {
-    // Syntax errors carry Babel's "(line:col)"; runtime errors carry the line that threw.
-    const at = lastError.match(/\((\d+):\d+\)/);
-    const line = at ? Number(at[1]) : lastErrorLine;
-    // The row label already gives the line; drop Babel's internal file name and keep the column.
-    const message = lastError
-      .split("\n")[0]
-      .replace(/^\/?user\.\w+:\s*/, "")
-      .replace(/\s*\(\d+:(\d+)\)/, " (column $1)");
-    // No line at all: say where it can't be earlier than, rather than pretending it's line 1.
-    const lastGood = Math.max(0, ...lastResults.map((r) => r.line));
-    if (line) appendRow(line, "error: " + message, "error", lastError);
-    else appendRow(lastGood + 1, (lastGood ? `error after line ${lastGood}: ` : "error: ") + message, "error", lastError);
-  }
+  const err = scratchError();
+  if (err) appendRow(err.line, "error: " + err.message, "error", lastError ?? "");
   positionResults();
+  applyInlineValues();
+}
+
+/** The current scratchpad error, placed on a line, or null. */
+function scratchError(): { line: number; message: string } | null {
+  if (!lastError) return null;
+  // Syntax errors carry Babel's "(line:col)"; runtime errors carry the line that threw.
+  const at = lastError.match(/\((\d+):\d+\)/);
+  const line = at ? Number(at[1]) : lastErrorLine;
+  // The line is shown separately; drop Babel's internal file name and keep the column.
+  const message = lastError
+    .split("\n")[0]
+    .replace(/^\/?user\.\w+:\s*/, "")
+    .replace(/\s*\(\d+:(\d+)\)/, " (column $1)");
+  if (line) return { line, message };
+  // No line at all: say where it can't be earlier than, rather than pretending it's line 1.
+  const lastGood = Math.max(0, ...lastResults.map((r) => r.line));
+  return { line: lastGood + 1, message: lastGood ? `after line ${lastGood}: ${message}` : message };
 }
 
 /** Move each result row to its line's height in the editor (side-by-side layout only). */
@@ -933,14 +940,24 @@ function shouldShowInline(): boolean {
   return playgroundInline && t.kind === "playground" && panelOf(t) === "js";
 }
 
-/** Push the collected values (or nothing) into the editor's decoration field. */
+/**
+ * Push values into the editor at the end of their lines. Scratchpads always show them (the
+ * results pane keeps the full, multi-line versions); playgrounds follow the setting.
+ */
 function applyInlineValues(): void {
-  const show = shouldShowInline();
-  const values = show
-    ? [...lastValues.entries()]
-        .filter(([, text]) => text !== "undefined")
-        .map(([line, text]) => ({ line, text }))
-    : [];
+  const t = getActiveTab();
+  let values: { line: number; text: string; error?: boolean }[] = [];
+  if (t.kind !== "playground") {
+    const byLine = new Map<number, string[]>();
+    for (const r of lastResults) if (r.line > 0) byLine.set(r.line, [...(byLine.get(r.line) ?? []), r.display.split("\n")[0]]);
+    values = [...byLine].map(([line, texts]) => ({ line, text: texts.join("  ·  ") }));
+    const err = scratchError();
+    if (err) values.push({ line: err.line, text: err.message, error: true });
+  } else if (shouldShowInline()) {
+    values = [...lastValues.entries()]
+      .filter(([, text]) => text !== "undefined")
+      .map(([line, text]) => ({ line, text }));
+  }
   editor.dispatch({ effects: setInlineValues.of(values) });
 }
 
@@ -1105,6 +1122,8 @@ function syncViewToActiveTab(): void {
   renderPanelTabs();
   // Values belong to whatever tab last rendered; drop them until this tab re-runs.
   lastValues.clear();
+  lastResults = [];
+  lastError = null;
   applyInlineValues();
 }
 
