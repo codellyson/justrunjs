@@ -12,6 +12,8 @@ is the editor.
 - **Lessons** (`src/web/lesson.ts`, `src/web/lesson-mode.ts`) record narration plus
   every editor change, and play back from `public/lessons/<name>.json` at
   `/web/?lesson=<name>`. A learner's first edit forks an ordinary tab.
+- **Accounts** (`worker/index.ts`, `src/web/account.ts`): email-code sign-in; a learner's
+  experiments and lesson progress sync to D1 so they follow them across devices.
 
 ## Develop
 

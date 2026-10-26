@@ -1,54 +1,45 @@
 # Deployment
 
-The marketing site (`/`) and browser editor (`/web/`) deploy to Cloudflare Pages
-automatically on every push to `master`.
+The site (`/`), browser editor (`/web/`) and API (`/api/*`, `/auth/*`) are one Cloudflare
+Worker: the Astro build is served as static assets and `marketing/worker/index.ts` handles
+sign-in and saved work, backed by a D1 database. `.github/workflows/deploy-marketing.yml`
+applies D1 migrations and deploys on every push to `master`.
 
----
+## First-time setup
 
-## Marketing site — first-time setup (Cloudflare Pages via GitHub Actions)
+Run these from `marketing/`.
 
-CI handles every deploy — no Cloudflare↔GitHub git integration needed.
-The workflow lives in [`.github/workflows/deploy-marketing.yml`](.github/workflows/deploy-marketing.yml).
+### 1. Create the D1 database
 
-### 1. Create the CF Pages project (one-time)
-
-The action deploys *into* an existing project, so the project name has to exist on Cloudflare first.
-
-Either way works:
-
-**Option A — Dashboard**: Cloudflare → Workers & Pages → Create application → Pages → **Direct upload** → name it `justrunjs`. Skip Git connection (this workflow is the deployer).
-
-**Option B — Wrangler CLI** (one-line from your machine):
 ```sh
-npx wrangler pages project create justrunjs --production-branch master
+npx wrangler d1 create justrunjs
 ```
 
-You'll be prompted to log in to Cloudflare in your browser the first time.
+Copy the printed `database_id` into `wrangler.jsonc` (replacing the all-zero placeholder) and commit it.
 
-### 2. Create a CF API token
+### 2. Sign-in email sender
 
-Go to <https://dash.cloudflare.com/profile/api-tokens> → **Create Token** → **Custom token** with:
+Sign-in codes are sent from `signin@justrunjs.kreativekorna.com` (`MAIL_FROM` in `wrangler.jsonc`)
+through the Worker's `send_email` binding. `kreativekorna.com` must be onboarded to Cloudflare Email
+Sending, as it is for Fillie; add the `justrunjs` subdomain sender there if the dashboard asks for it.
 
-- Permissions: **Account → Cloudflare Pages → Edit**
-- Account resources: include your account
+### 3. API token and GitHub secrets
 
-Copy the token (you only see it once).
+Create a token at <https://dash.cloudflare.com/profile/api-tokens> with **Workers Scripts: Edit** and
+**D1: Edit** on your account, then add repo secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 
-### 3. Add GitHub Actions secrets
+### 4. Custom domain
 
-In the repo settings → Secrets and variables → Actions, add:
+After the first deploy, attach the domain under **Workers & Pages → justrunjs → Settings → Domains & Routes**.
+If the domain still points at the old Pages project, remove it there first, then delete the Pages project.
 
-| Name | Value |
-|---|---|
-| `CLOUDFLARE_API_TOKEN` | The token from step 2 |
-| `CLOUDFLARE_ACCOUNT_ID` | Your CF account ID (right sidebar of the CF dashboard) |
+## Local development
 
-### 4. Push
+```sh
+pnpm dev:api     # build, apply migrations to the local D1, run the Worker on :8797
+pnpm dev         # astro dev on :4321, forwarding /api and /auth to :8797
+pnpm test        # lesson engine
+pnpm test:api    # API end to end against a local Worker (needs a build)
+```
 
-The workflow triggers on any push to `master` that touches `marketing/**` (or on the workflow file itself). Every push to a non-master branch / every PR gets a preview deployment at a unique `*-justrunjs.pages.dev` URL — comment on the PR by the action.
-
-### Custom domain
-
-Once a deploy lands, hook up `justrunjs.com` (or whatever) under **Pages → justrunjs → Custom domains** in the CF dashboard. DNS for the domain has to be on Cloudflare for the one-click setup; otherwise add a CNAME manually pointing at `justrunjs.pages.dev`.
-
----
+Sign-in emails are simulated locally: the code is printed in the `dev:api` output.

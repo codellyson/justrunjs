@@ -39,6 +39,7 @@ import {
   type SharedBin,
 } from "./share.ts";
 import { initLessonMode, slotLoadAnnotations } from "./lesson-mode.ts";
+import { initAccount } from "./account.ts";
 
 interface LineResult {
   line: number;
@@ -256,6 +257,7 @@ function persistTabs(): void {
   const kept = tabs.filter((t) => !t.lessonSource);
   const keptActive = kept.some((t) => t.id === activeId) ? activeId : kept[0]?.id;
   localStorage.setItem(TABS_KEY, JSON.stringify({ tabs: kept, activeId: keptActive }));
+  account?.onPersist();
 }
 
 function languageExt(lang: LanguageId): Extension {
@@ -481,6 +483,7 @@ const inlineValuesField = StateField.define<DecorationSet>({
 });
 
 let lessonHooks: ReturnType<typeof initLessonMode> | null = null;
+let account: ReturnType<typeof initAccount> | null = null;
 
 const _bootTab = getActiveTab();
 const editor = new EditorView({
@@ -1062,6 +1065,7 @@ function closeTab(id: string): void {
   if (tabs.length <= 1) return;
   const idx = tabs.findIndex((t) => t.id === id);
   if (idx === -1 || tabs[idx].lessonSource) return;
+  void account?.onClose(tabs[idx]);
   tabs.splice(idx, 1);
   if (activeId === id) {
     activeId = tabs[Math.max(0, idx - 1)].id;
@@ -1200,7 +1204,19 @@ function renderTabs(): void {
 
 renderTabs();
 
+account = initAccount({
+  tabs: () => tabs,
+  addTabs: (list) => {
+    tabs.push(...list.map(normalizeTab));
+    renderTabs();
+    persistTabs();
+  },
+  persist: persistTabs,
+  showToast,
+});
+
 lessonHooks = initLessonMode({
+  account,
   editor,
   tabs: () => tabs,
   activeTab: getActiveTab,

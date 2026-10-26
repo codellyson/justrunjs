@@ -4,6 +4,7 @@
 import { Annotation, ChangeSet, Transaction, type AnnotationType } from "@codemirror/state";
 import type { EditorView, ViewUpdate } from "@codemirror/view";
 import { checkpoints, seek, step, type Lesson, type LessonEvent, type ReplayState, type SlotId } from "./lesson.ts";
+import type { initAccount } from "./account.ts";
 
 /** Transactions that load a tab or panel into the editor; never learner or author input. */
 export const slotLoad = Annotation.define<boolean>();
@@ -33,6 +34,7 @@ export interface LessonTab {
 }
 
 export interface LessonContext {
+  account: ReturnType<typeof initAccount>;
   editor: EditorView;
   tabs(): LessonTab[];
   activeTab(): LessonTab;
@@ -264,8 +266,33 @@ export function initLessonMode(ctx: LessonContext) {
     else audio.pause();
   }
 
+  // Progress: saved on pause, at the end, and every 10s of playback, for signed-in learners.
+  let lastSaved = 0;
+  const saveProgress = (completed = false) => {
+    lastSaved = performance.now();
+    ctx.account.saveProgress(slug!, audio.currentTime * 1000, completed || audio.currentTime * 1000 >= lesson!.durationMs - 1000);
+  };
+  // Resume once, as soon as the account's progress for this lesson is known.
+  let resumed = false;
+  function resume() {
+    const p = lesson && !resumed && ctx.account.progressFor(slug!);
+    if (!p) return;
+    resumed = true;
+    if (!audio.paused || shownMs > 0 || p.completed || p.positionMs < 3000) return;
+    audio.currentTime = p.positionMs / 1000;
+    jump(p.positionMs);
+    ctx.showToast(`Picked up where you left off, at ${formatTime(p.positionMs)}.`);
+  }
+  ctx.account.onChange(() => {
+    resume();
+    render();
+  });
+
   function tick() {
-    if (onLessonTab() && !audio.paused) advance(audio.currentTime * 1000);
+    if (onLessonTab() && !audio.paused) {
+      advance(audio.currentTime * 1000);
+      if (performance.now() - lastSaved > 10_000) saveProgress();
+    }
     renderTime();
     requestAnimationFrame(tick);
   }
@@ -284,8 +311,15 @@ export function initLessonMode(ctx: LessonContext) {
       ctx.showToast((e as Error).message);
       return;
     }
-    audio.onended = () => advance(Infinity);
-    audio.onplay = audio.onpause = render;
+    audio.onended = () => {
+      advance(Infinity);
+      saveProgress(true);
+    };
+    audio.onplay = render;
+    audio.onpause = () => {
+      saveProgress();
+      render();
+    };
     const files = new Map(lesson.files.map((f) => [f.id, f.content]));
     lessonTab = {
       id: `lesson-${name}`,
@@ -303,6 +337,7 @@ export function initLessonMode(ctx: LessonContext) {
     ctx.tabs().unshift(lessonTab);
     ctx.activateTab(lessonTab.id);
     jump(0);
+    resume();
     render();
     tick();
   }
@@ -362,7 +397,13 @@ export function initLessonMode(ctx: LessonContext) {
       const mine = t.lesson?.slug === slug;
       range.max = String(lesson.durationMs);
       items.push(button(onLessonTab() && !audio.paused ? "❚❚ Pause" : "▶ Play", togglePlay), clock, range, speed);
-      if (mine) items.push(text(`Your experiment · from ${formatTime(t.lesson!.originMs)}`, "lesson-mode"), button("↩ Back to lesson", () => backToLesson()));
+      if (mine) {
+        items.push(
+          text(`Your experiment · from ${formatTime(t.lesson!.originMs)}`, "lesson-mode"),
+          button("↩ Back to lesson", () => backToLesson()),
+          text(ctx.account.statusText(t)),
+        );
+      }
     }
     bar.replaceChildren(...items);
     bar.classList.toggle("hidden", !items.length);

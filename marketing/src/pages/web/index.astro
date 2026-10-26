@@ -95,6 +95,12 @@ import { EXAMPLE_CATEGORIES } from "../../web/examples";
       <div class="sidebar-status" id="sidebar-status" title="ready">
         <span class="status-dot" aria-hidden="true"></span>
       </div>
+      <button class="icon-btn" id="btn-account" title="Sign in to save your work">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="8" r="4" />
+          <path d="M4 21a8 8 0 0 1 16 0" />
+        </svg>
+      </button>
       <button class="icon-btn" id="btn-settings" title="Settings">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="3" />
@@ -198,6 +204,7 @@ import { EXAMPLE_CATEGORIES } from "../../web/examples";
     </div>
 
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+    <div id="account-popover" class="settings-popover account-popover hidden" role="dialog" aria-label="Account"></div>
 
     <div id="settings-popover" class="settings-popover hidden" role="dialog" aria-label="Settings">
       <div class="settings-section">
