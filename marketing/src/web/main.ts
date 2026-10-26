@@ -60,7 +60,7 @@ interface Transport {
 type ReadyMessage = { type: "ready" };
 type ReplyMessage =
   | { id: number; ok: true; results: LineResult[]; ms: number }
-  | { id: number; ok: false; error: string };
+  | { id: number; ok: false; error: string; line?: number; results?: LineResult[] };
 type WorkerMessage = ReadyMessage | ReplyMessage;
 
 interface ThemeVariant {
@@ -602,6 +602,7 @@ function classify(s: string): ValueKind {
 
 let lastResults: LineResult[] = [];
 let lastError: string | null = null;
+let lastErrorLine = 0; // line that threw, from the worker; 0 when unknown
 
 // Beside the editor, each value sits at its source line's height and scrolls with it.
 // Stacked under the editor (phones) that alignment means nothing, so values list in
@@ -630,21 +631,8 @@ function paintResults(): void {
   // Aligned rows have one line of room, so long values show their first line; hover has the rest.
   const shown = (d: string) => (stacked || !d.includes("\n") ? d : d.split("\n")[0] + " …");
 
-  if (lastError) {
-    // Babel reports "(line:col)"; runtime errors carry no position, so they sit at the top.
-    const at = lastError.match(/\((\d+):\d+\)/);
-    // The row label already gives the line; drop Babel's internal file name and keep the column.
-    const message = lastError
-      .split("\n")[0]
-      .replace(/^\/?user\.\w+:\s*/, "")
-      .replace(/\s*\(\d+:(\d+)\)/, " (column $1)");
-    appendRow(at ? Number(at[1]) : 1, "error: " + message, "error", lastError);
-    positionResults();
-    return;
-  }
-
   const sourceText = editor.state.doc.toString();
-  if (lastResults.length === 0 && sourceText.trim().length === 0) {
+  if (!lastError && lastResults.length === 0 && sourceText.trim().length === 0) {
     const ph = document.createElement("div");
     ph.className = "result-placeholder";
     ph.textContent = "Type some TS or JS. Each top-level value shows up next to its line.";
@@ -663,6 +651,21 @@ function paintResults(): void {
       "v-" + classify(rs[rs.length - 1].display),
       rs.map((r) => r.display).join("\n\n"),
     );
+  }
+
+  if (lastError) {
+    // Syntax errors carry Babel's "(line:col)"; runtime errors carry the line that threw.
+    const at = lastError.match(/\((\d+):\d+\)/);
+    const line = at ? Number(at[1]) : lastErrorLine;
+    // The row label already gives the line; drop Babel's internal file name and keep the column.
+    const message = lastError
+      .split("\n")[0]
+      .replace(/^\/?user\.\w+:\s*/, "")
+      .replace(/\s*\(\d+:(\d+)\)/, " (column $1)");
+    // No line at all: say where it can't be earlier than, rather than pretending it's line 1.
+    const lastGood = Math.max(0, ...lastResults.map((r) => r.line));
+    if (line) appendRow(line, "error: " + message, "error", lastError);
+    else appendRow(lastGood + 1, (lastGood ? `error after line ${lastGood}: ` : "error: ") + message, "error", lastError);
   }
   positionResults();
 }
@@ -746,7 +749,7 @@ function createWorkerTransport(): Transport {
       if (!entry) return;
       pendingReplies.delete(data.id);
       if (data.ok) entry.resolve({ results: data.results, ms: data.ms });
-      else entry.reject(new Error(data.error || "eval failed"));
+      else entry.reject(Object.assign(new Error(data.error || "eval failed"), { line: data.line, results: data.results }));
     };
     worker.onerror = (e: ErrorEvent) => {
       const msg =
@@ -809,8 +812,11 @@ async function runEval(): Promise<void> {
   } catch (e) {
     if (myGen !== evalGen) return;
     const msg = e instanceof Error ? e.message : String(e);
+    const partial = e as { line?: number; results?: LineResult[] };
     lastError = msg;
-    lastResults = [];
+    lastErrorLine = partial.line ?? 0;
+    // Values from the lines before the throw are still true; keep them.
+    lastResults = partial.results ?? [];
     paintResults();
     setStatus(msg, "error");
   } finally {

@@ -27,10 +27,12 @@ interface BabelPath {
   isExpressionStatement(): boolean;
   isImportDeclaration(): boolean;
   insertAfter(node: BabelNode): void;
+  insertBefore(node: BabelNode): void;
 }
 
 interface BabelTypes {
   callExpression(callee: BabelNode, args: BabelNode[]): BabelNode;
+  expressionStatement(expr: BabelNode): BabelNode;
   identifier(name: string): BabelNode;
   numericLiteral(value: number): BabelNode;
   stringLiteral(value: string): BabelNode;
@@ -82,6 +84,25 @@ function instrumentPlugin({ types: t }: BabelPluginApi): BabelPlugin {
           if (isConsoleCall(expr)) continue;
           const line = stmt.node.loc?.start?.line ?? 0;
           stmt.node.expression = wrap(line, expr as BabelNode);
+        }
+      },
+    },
+  };
+}
+
+// Call __line(n) before each top-level statement, so when the code throws the
+// runtime knows which line was running (and which values came before it).
+function trackLinesPlugin({ types: t }: BabelPluginApi): BabelPlugin {
+  return {
+    visitor: {
+      Program(path: BabelPath) {
+        for (const stmt of path.get("body") as BabelPath[]) {
+          if (stmt.node.type === "ImportDeclaration") continue;
+          const line = stmt.node.loc?.start?.line;
+          if (!line) continue;
+          stmt.insertBefore(
+            t.expressionStatement(t.callExpression(t.identifier("__line"), [t.numericLiteral(line)])),
+          );
         }
       },
     },
@@ -171,6 +192,8 @@ export type SourceType = "module" | "script";
 export interface TranspileOptions {
   /** Wrap top-level expressions in __capture for per-line value collection. */
   instrument?: boolean;
+  /** Call __line(n) before each top-level statement (scratchpad worker only). */
+  trackLines?: boolean;
 }
 
 export interface TranspileResult {
@@ -182,9 +205,11 @@ function transpileAs(
   source: string,
   sourceType: SourceType,
   instrument: boolean,
+  trackLines = false,
 ): string {
   const plugins = [
     ...(instrument ? [instrumentPlugin] : []),
+    ...(trackLines ? [trackLinesPlugin] : []),
     checkDefaultExportsPlugin,
     rewriteImportsPlugin,
   ];
@@ -211,16 +236,17 @@ export function transpile(
   opts: TranspileOptions = {},
 ): TranspileResult {
   const instrument = opts.instrument ?? false;
+  const trackLines = opts.trackLines ?? false;
   try {
     return {
-      code: transpileAs(source, "module", instrument),
+      code: transpileAs(source, "module", instrument, trackLines),
       sourceType: "module",
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
     if (STRICT_MODE_ONLY.test(msg)) {
       return {
-        code: transpileAs(source, "script", instrument),
+        code: transpileAs(source, "script", instrument, trackLines),
         sourceType: "script",
       };
     }
