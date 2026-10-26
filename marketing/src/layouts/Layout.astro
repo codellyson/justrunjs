@@ -1,6 +1,5 @@
 ---
-import '@fontsource-variable/geist';
-import '@fontsource-variable/geist-mono';
+import '@fontsource-variable/recursive/full.css';
 import '../styles/global.css';
 
 interface Props {
@@ -11,8 +10,8 @@ interface Props {
 }
 
 const {
-  title = 'justrunjs — a JavaScript scratchpad with inline values.',
-  description = 'Type TypeScript or JavaScript. Every top-level value shows up next to its source line. Native desktop, in the browser, or both. Open source.',
+  title = 'crow: learn to code in a live editor',
+  description = 'Narrated coding lessons that play in a live editor: watch the code type itself in, see each value beside its line, and take over the code at any moment. Plus a TypeScript and JavaScript scratchpad to keep practising. Free, in your browser.',
   jsonLd,
 } = Astro.props;
 
@@ -23,26 +22,26 @@ const canonical = new URL(Astro.url.pathname, Astro.site).toString();
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="generator" content={Astro.generator} />
     <link rel="canonical" href={canonical} />
 
     <title>{title}</title>
     <meta name="description" content={description} />
 
-    <meta name="keywords" content="JavaScript scratchpad, TypeScript playground, RunJS alternative, inline values, ESM imports, npm browser, Rust V8, Tauri" />
+    <meta name="keywords" content="learn to code, learn JavaScript, learn TypeScript, interactive coding lessons, live code editor, JavaScript scratchpad" />
     <meta name="author" content="codellyson" />
     <meta name="category" content="developer-tools" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="justrunjs" />
+    <meta name="apple-mobile-web-app-title" content="crow" />
 
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f9fafb" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#16140f" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#faf5ee" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1a1512" />
 
     <script>
-      import { bootTheme } from "@codellyson/justui/boot";
-      bootTheme({ keyPrefix: "runjs" });
+      import { bootClassroom } from "../lib/classroom-theme";
+      bootClassroom();
     </script>
 
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
@@ -53,7 +52,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site).toString();
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:url" content={canonical} />
-    <meta property="og:site_name" content="justrunjs" />
+    <meta property="og:site_name" content="crow" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={new URL("/og-image.png", Astro.site).toString()} />

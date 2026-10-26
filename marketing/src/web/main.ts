@@ -3,16 +3,12 @@ import {
   EditorState,
   Compartment,
   Prec,
-  StateField,
-  StateEffect,
   type Extension,
 } from "@codemirror/state";
 import {
   EditorView,
   keymap,
-  Decoration,
-  WidgetType,
-  type DecorationSet,
+  placeholder,
 } from "@codemirror/view";
 import { indentWithTab } from "@codemirror/commands";
 import { javascript } from "@codemirror/lang-javascript";
@@ -25,12 +21,6 @@ import {
 } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 import { findExample } from "./examples.ts";
-import inspectorRaw from "./inspector.ts?raw";
-import {
-  PREVIEW_SOURCE,
-  buildBridge,
-  type PreviewMessage,
-} from "./preview-bootstrap.ts";
 import {
   decodeSharedBin,
   encodeShareUrl,
@@ -38,54 +28,12 @@ import {
   type ShareLanguage,
   type SharedBin,
 } from "./share.ts";
-
-interface LineResult {
-  line: number;
-  display: string;
-}
-
-interface EvalOutcome {
-  results: LineResult[];
-  ms: number;
-}
-
-interface Transport {
-  evaluate(source: string): Promise<EvalOutcome>;
-  stop(): void;
-}
-
-type ReadyMessage = { type: "ready" };
-type ReplyMessage =
-  | { id: number; ok: true; results: LineResult[]; ms: number }
-  | { id: number; ok: false; error: string };
-type WorkerMessage = ReadyMessage | ReplyMessage;
-
-interface TauriWindowHandle {
-  minimize(): void | Promise<void>;
-  toggleMaximize(): void | Promise<void>;
-  close(): void | Promise<void>;
-  isMaximized(): Promise<boolean>;
-  onResized(cb: () => void): Promise<() => void>;
-}
-
-interface TauriCore {
-  invoke<T = unknown>(cmd: string, args?: Record<string, unknown>): Promise<T>;
-}
-
-interface TauriWindowApi {
-  getCurrentWindow(): TauriWindowHandle;
-}
-
-interface TauriGlobal {
-  core?: TauriCore;
-  window?: TauriWindowApi;
-}
-
-declare global {
-  interface Window {
-    __TAURI__?: TauriGlobal;
-  }
-}
+import { initRecorder, slotLoadAnnotations } from "./recorder.ts";
+import { initAccount } from "./account.ts";
+import { wirePopover } from "./popover.ts";
+import { inlineValuesField, setInlineValues, type InlineValue } from "./inline-values.ts";
+import { createScratchRunner, type LineResult, type RunStatus } from "./scratch-runner.ts";
+import { createPreview } from "./preview.ts";
 
 interface ThemeVariant {
   bg?: string;
@@ -127,9 +75,11 @@ interface Tab {
   jsLanguage?: LanguageId;
   /** Which sub-panel the editor is currently showing for a playground tab. */
   activePanel?: PanelId;
+  /** Set on an experiment forked from a lesson in the old in-editor player. */
+  lesson?: { slug: string; originMs: number };
 }
 
-const STARTER = `// justrunjs in the browser — every top-level value shows up on the right.
+const STARTER = `// crow: every top-level value shows up next to its line.
 
 const greeting: string = "hello";
 greeting.toUpperCase();
@@ -142,7 +92,13 @@ const total = await Promise.resolve(40 + 2);
 total;
 `;
 
-const TABS_KEY = "runjs.tabs";
+const isEmbedded =
+  new URLSearchParams(window.location.search).get("embed") === "1" ||
+  window.parent !== window;
+
+// The landing-page embed keeps its own tabs, so a visitor first sees the starter
+// and /web/'s tabs are never shown to (or overwritten by) the demo.
+const TABS_KEY = isEmbedded ? "runjs.embedTabs" : "runjs.tabs";
 
 const NPM_TEMPLATE = `// Any npm package, served as ESM via esm.sh.
 import _ from "npm:lodash@4";
@@ -188,6 +144,9 @@ let activeId: string | null = null;
 /** Backfill fields missing on tabs persisted before playground support. */
 function normalizeTab(t: Tab): Tab {
   if (!t.kind) t.kind = "scratchpad";
+  // Experiments made before the naming settled were called "<lesson> @ 0:12.html".
+  const legacy = t.lesson && t.name.match(/^(.*) @ (\d+:\d\d)\.(?:html|js|ts)$/);
+  if (legacy) t.name = `${legacy[1]} (experiment from ${legacy[2]})`;
   if (t.kind === "playground") {
     t.html ??= "";
     t.css ??= "";
@@ -276,6 +235,7 @@ function flushEditor(): void {
 function persistTabs(): void {
   flushEditor();
   localStorage.setItem(TABS_KEY, JSON.stringify({ tabs, activeId }));
+  account?.onPersist();
 }
 
 function languageExt(lang: LanguageId): Extension {
@@ -299,10 +259,10 @@ const consoleCountEl = document.getElementById("console-count");
 const panelTabsEl = document.getElementById("panel-tabs");
 const PANELS: PanelId[] = ["html", "css", "js"];
 
-type StatusState = "ready" | "running" | "ok" | "error";
-const STATES: StatusState[] = ["ready", "running", "ok", "error"];
-function setStatus(text: string, state?: StatusState): void {
+const STATES: RunStatus[] = ["ready", "running", "ok", "error"];
+function setStatus(text: string, state?: RunStatus): void {
   sidebarStatusEl.title = text;
+  sidebarStatusEl.setAttribute("aria-label", `Status: ${text}`);
   for (const s of STATES) sidebarStatusEl.classList.remove(s);
   if (state) sidebarStatusEl.classList.add(state);
 }
@@ -316,6 +276,7 @@ const editorTheme = EditorView.theme(
     },
     ".cm-content": {
       fontFamily: "var(--font-mono)",
+      fontVariationSettings: '"MONO" 1, "CASL" 1',
       padding: "10px 0",
       caretColor: "rgb(var(--text-primary))",
     },
@@ -337,6 +298,7 @@ const editorTheme = EditorView.theme(
     ".cm-cursor": { borderLeftColor: "rgb(var(--accent))" },
     ".cm-scroller": {
       fontFamily: "var(--font-mono)",
+      fontVariationSettings: '"MONO" 1, "CASL" 1',
       overflow: "auto",
     },
     "&.cm-focused": { outline: "none" },
@@ -348,30 +310,23 @@ const editorTheme = EditorView.theme(
   },
 );
 
+// Comments follow the theme: between muted and secondary text, which justui keeps at
+// 4.5:1 or better on both backgrounds, so they stay quiet but readable in every theme.
+const COMMENT_COLOR = "color-mix(in srgb, rgb(var(--text-muted)) 50%, rgb(var(--text-secondary)))";
+
+// Dark code colours match the lessons (src/learn/lesson-page.ts), so code reads the same everywhere.
 const darkHighlight = HighlightStyle.define([
-  { tag: tags.keyword, color: "#e879a4" },
-  { tag: tags.controlKeyword, color: "#e879a4" },
-  { tag: tags.moduleKeyword, color: "#e879a4" },
-  { tag: tags.definitionKeyword, color: "#e879a4" },
-  { tag: [tags.string, tags.special(tags.string)], color: "#b8d077" },
-  { tag: tags.number, color: "#c397f5" },
-  { tag: tags.bool, color: "#c397f5" },
-  { tag: tags.null, color: "#c397f5" },
-  { tag: tags.atom, color: "#c397f5" },
-  { tag: tags.variableName, color: "#8fc1e0" },
-  { tag: tags.propertyName, color: "#8fc1e0" },
-  { tag: tags.function(tags.variableName), color: "#b8d077" },
-  { tag: tags.function(tags.propertyName), color: "#e879a4" },
-  { tag: tags.typeName, color: "#8fc1e0" },
-  { tag: tags.className, color: "#8fc1e0" },
-  { tag: tags.comment, color: "#7c7266", fontStyle: "italic" },
-  { tag: tags.lineComment, color: "#7c7266", fontStyle: "italic" },
-  { tag: tags.blockComment, color: "#7c7266", fontStyle: "italic" },
-  { tag: tags.operator, color: "#e879a4" },
-  { tag: tags.punctuation, color: "#e8ded2" },
-  { tag: tags.bracket, color: "#e8ded2" },
-  { tag: tags.regexp, color: "#f0b870" },
-  { tag: tags.escape, color: "#f0b870" },
+  { tag: [tags.keyword, tags.controlKeyword, tags.moduleKeyword, tags.definitionKeyword, tags.operator], color: "#e8a6c8" },
+  { tag: [tags.string, tags.special(tags.string)], color: "#c9d98a" },
+  { tag: [tags.number, tags.bool, tags.null, tags.atom], color: "#f0c27a" },
+  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName), tags.typeName, tags.className], color: "#8fc3f0" },
+  { tag: tags.propertyName, color: "#8fc3f0" },
+  { tag: [tags.comment, tags.lineComment, tags.blockComment], color: COMMENT_COLOR, fontStyle: "italic" },
+  { tag: [tags.punctuation, tags.bracket], color: "#d6cbbd" },
+  { tag: [tags.regexp, tags.escape], color: "#f0c27a" },
+  { tag: [tags.tagName, tags.angleBracket], color: "#e8a6c8" },
+  { tag: tags.attributeName, color: "#8fc3f0" },
+  { tag: tags.attributeValue, color: "#c9d98a" },
 ]);
 
 const lightHighlight = HighlightStyle.define([
@@ -390,9 +345,9 @@ const lightHighlight = HighlightStyle.define([
   { tag: tags.function(tags.propertyName), color: "#8250df" },
   { tag: tags.typeName, color: "#24292f" },
   { tag: tags.className, color: "#953800" },
-  { tag: tags.comment, color: "#6e7781", fontStyle: "italic" },
-  { tag: tags.lineComment, color: "#6e7781", fontStyle: "italic" },
-  { tag: tags.blockComment, color: "#6e7781", fontStyle: "italic" },
+  { tag: tags.comment, color: COMMENT_COLOR, fontStyle: "italic" },
+  { tag: tags.lineComment, color: COMMENT_COLOR, fontStyle: "italic" },
+  { tag: tags.blockComment, color: COMMENT_COLOR, fontStyle: "italic" },
   { tag: tags.operator, color: "#cf222e" },
   { tag: tags.punctuation, color: "#24292f" },
   { tag: tags.bracket, color: "#24292f" },
@@ -424,6 +379,7 @@ const TAB_SIZE_KEY = "runjs.tabSize";
 const WORD_WRAP_KEY = "runjs.wordWrap";
 const AUTO_EVAL_KEY = "runjs.autoEval";
 const PLAYGROUND_INLINE_KEY = "runjs.playgroundInline";
+const AUTHOR_KEY = "runjs.author";
 
 function readInt(key: string, fallback: number): number {
   const v = parseInt(localStorage.getItem(key) || "", 10);
@@ -446,59 +402,49 @@ document.documentElement.style.setProperty(
   fontSize + "px",
 );
 
+// Language badge colours are fixed across themes, so on some backgrounds they fall under
+// WCAG AA. After a theme is applied, work out how far to push them toward black (light
+// themes) or white (dark themes) to reach 4.5:1, and hand that to the CSS through
+// --lang-ink-share / --lang-ink-target. (Theme text colours meet AA in justui ≥1.0.3.)
+const LANG_BADGES = [[71, 137, 209], [224, 179, 40], [149, 123, 246]]; // TS, JS, playground
+function ensureReadableBadges(): void {
+  const root = document.documentElement;
+  const css = getComputedStyle(root);
+  const rgb = (name: string) => css.getPropertyValue(name).trim().split(/\s+/).map(Number);
+  const lum = (c: number[]) => {
+    const [r, g, b] = c.map((v) => (v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const ratio = (a: number[], b: number[]) => {
+    const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  const mix = (a: number[], b: number[], t: number) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
+  const backgrounds = [rgb("--bg"), rgb("--bg-secondary")];
+  if (backgrounds.some((c) => c.length !== 3 || c.some(Number.isNaN))) return;
+  const extreme = lum(backgrounds[0]) > 0.4 ? [0, 0, 0] : [255, 255, 255];
+  // A badge is its language colour on a 16% tint of itself, over either background.
+  let t = 1;
+  for (let i = 0; i <= 20; i++) {
+    const step = i / 20;
+    if (LANG_BADGES.every((lang) => backgrounds.every((bg) => ratio(mix(lang, extreme, step), mix(bg, lang, 0.16)) >= 4.5))) {
+      t = step;
+      break;
+    }
+  }
+  root.style.setProperty("--lang-ink-target", extreme.join(" "));
+  root.style.setProperty("--lang-ink-share", `${Math.round((1 - t) * 100)}%`);
+}
+ensureReadableBadges();
+
 function currentMode(): Mode {
   return document.documentElement.dataset.themeMode === "light"
     ? "light"
     : "dark";
 }
 
-// --- inline value decorations (playground JS: RunJS-style `⇒ value` at line end) ---
-
-class InlineValueWidget extends WidgetType {
-  constructor(readonly text: string) {
-    super();
-  }
-  eq(other: InlineValueWidget): boolean {
-    return other.text === this.text;
-  }
-  toDOM(): HTMLElement {
-    const span = document.createElement("span");
-    span.className = "cm-inline-value";
-    const firstLine = this.text.split("\n")[0];
-    span.textContent =
-      "  ⇒ " + firstLine + (this.text.includes("\n") ? " …" : "");
-    return span;
-  }
-  ignoreEvent(): boolean {
-    return true;
-  }
-}
-
-const setInlineValues = StateEffect.define<{ line: number; text: string }[]>();
-
-const inlineValuesField = StateField.define<DecorationSet>({
-  create: () => Decoration.none,
-  update(deco, tr) {
-    deco = deco.map(tr.changes);
-    for (const e of tr.effects) {
-      if (!e.is(setInlineValues)) continue;
-      const ranges = [];
-      for (const { line, text } of e.value) {
-        if (line < 1 || line > tr.state.doc.lines) continue;
-        const pos = tr.state.doc.line(line).to;
-        ranges.push(
-          Decoration.widget({
-            widget: new InlineValueWidget(text),
-            side: 1,
-          }).range(pos),
-        );
-      }
-      deco = Decoration.set(ranges, true);
-    }
-    return deco;
-  },
-  provide: (f) => EditorView.decorations.from(f),
-});
+let recorder: ReturnType<typeof initRecorder> | null = null;
+let account: ReturnType<typeof initAccount> | null = null;
 
 const _bootTab = getActiveTab();
 const editor = new EditorView({
@@ -510,7 +456,7 @@ const editor = new EditorView({
       wordWrapCompartment.of(wordWrap ? EditorView.lineWrapping : []),
       indentUnit.of("  "),
       tabSizeCompartment.of(EditorState.tabSize.of(tabSize)),
-      keymap.of([
+      Prec.high(keymap.of([
         indentWithTab,
         {
           key: "Mod-Enter",
@@ -526,13 +472,28 @@ const editor = new EditorView({
             return true;
           },
         },
-      ]),
+      ])),
       languageCompartment.of(slotLanguageExt(_bootTab)),
+      // An empty file says what to do with it.
+      placeholder(() => {
+        const t = getActiveTab();
+        const hint =
+          t.kind !== "playground"
+            ? "Type JavaScript or TypeScript here. Each value shows up at the end of its line."
+            : panelOf(t) === "html"
+              ? "Write HTML here. It renders in the preview."
+              : panelOf(t) === "css"
+                ? "Write CSS here. It styles the preview."
+                : "Write JavaScript here. It runs in the preview; console output shows below it.";
+        return Object.assign(document.createElement("span"), { textContent: hint });
+      }),
       inlineValuesField,
       Prec.highest(tsCompartment.of([])),
       Prec.highest(highlightCompartment.of(highlightFor(currentMode()))),
       editorTheme,
       EditorView.updateListener.of((update) => {
+        recorder?.onUpdate(update);
+        if (update.geometryChanged || update.heightChanged) positionResults();
         if (update.docChanged) {
           persistTabs();
           schedule();
@@ -572,256 +533,145 @@ function classify(s: string): ValueKind {
   return "object";
 }
 
-let lastResults: LineResult[] = [];
-let lastError: string | null = null;
+// Beside the editor, each value sits at its source line's height and scrolls with it.
+// Stacked under the editor (phones) that alignment means nothing, so values list in
+// order instead, still labelled with their line number.
+const stackedLayout = window.matchMedia("(max-width: 767px)");
 
-function appendRow(seq: number, text: string, klass: string | null): HTMLSpanElement {
+function appendRow(line: number, text: string, klass: string | null, full = text): void {
   const row = document.createElement("div");
   row.className = "result-row" + (klass ? " " + klass : "");
-  const seqEl = document.createElement("span");
-  seqEl.className = "seq";
-  seqEl.textContent = String(seq);
+  row.dataset.line = String(line);
+  const lineEl = document.createElement("span");
+  lineEl.className = "seq";
+  lineEl.textContent = String(line);
+  lineEl.title = `Line ${line}`;
   const value = document.createElement("span");
   value.className = "value";
   value.textContent = text;
-  row.appendChild(seqEl);
-  row.appendChild(value);
+  value.title = full;
+  row.append(lineEl, value);
   resultsInner.appendChild(row);
-  return value;
 }
 
 function paintResults(): void {
   resultsInner.innerHTML = "";
-
-  if (lastError) {
-    appendRow(1, "error: " + lastError.split("\n")[0], "error");
-    return;
-  }
+  const stacked = stackedLayout.matches;
+  // Aligned rows have one line of room, so long values show their first line; hover has the rest.
+  const shown = (d: string) => (stacked || !d.includes("\n") ? d : d.split("\n")[0] + " …");
 
   const sourceText = editor.state.doc.toString();
-  if (lastResults.length === 0 && sourceText.trim().length === 0) {
+  if (!runner.error && runner.results.length === 0 && sourceText.trim().length === 0) {
     const ph = document.createElement("div");
     ph.className = "result-placeholder";
-    ph.textContent = "type some TS / JS — each top-level value shows up here";
+    ph.textContent = "Type some TS or JS. Each top-level value shows up next to its line.";
     resultsInner.appendChild(ph);
+    positionResults();
     return;
   }
 
-  let seq = 1;
-  for (const r of lastResults) {
-    const klass = "v-" + classify(r.display);
-    const lines = r.display.split("\n");
-    for (let i = 0; i < lines.length; i++) {
-      const v = appendRow(seq++, lines[i], i === 0 ? klass : null);
-      if (i === 0) v.title = r.display;
-    }
+  // Several values from one line share its row.
+  const byLine = new Map<number, LineResult[]>();
+  for (const r of runner.results) byLine.set(r.line, [...(byLine.get(r.line) ?? []), r]);
+  for (const [line, rs] of [...byLine].sort((x, y) => x[0] - y[0])) {
+    appendRow(
+      line,
+      rs.map((r) => shown(r.display)).join("  ·  "),
+      "v-" + classify(rs[rs.length - 1].display),
+      rs.map((r) => r.display).join("\n\n"),
+    );
   }
+
+  const err = runner.placedError();
+  if (err) appendRow(err.line, "error: " + err.message, "error", runner.error ?? "");
+  positionResults();
+  applyInlineValues();
 }
 
-const tauriCore: TauriCore | undefined =
-  typeof window !== "undefined" && window.__TAURI__
-    ? window.__TAURI__.core
-    : undefined;
-
-const transport: Transport = tauriCore
-  ? createTauriTransport(tauriCore)
-  : createWorkerTransport();
-
-function createTauriTransport(core: TauriCore): Transport {
-  return {
-    async evaluate(source: string): Promise<EvalOutcome> {
-      const t0 = performance.now();
-      const results = await core.invoke<LineResult[]>("evaluate_source", { source });
-      return { results, ms: Math.round(performance.now() - t0) };
-    },
-    stop(): void {
-      core.invoke("stop_eval").catch(() => {});
-    },
-  };
-}
-
-function createWorkerTransport(): Transport {
-  let worker: Worker | null = null;
-  let workerReady: Promise<void> = Promise.resolve();
-  const pendingReplies = new Map<
-    number,
-    { resolve: (v: EvalOutcome) => void; reject: (e: Error) => void }
-  >();
-  let evalSeq = 0;
-
-  function spawn(): void {
-    let resolveReady!: () => void;
-    let rejectReady!: (e: Error) => void;
-    workerReady = new Promise<void>((res, rej) => {
-      resolveReady = res;
-      rejectReady = rej;
-    });
-    worker = new Worker(new URL("./worker.ts", import.meta.url), {
-      type: "module",
-    });
-    worker.onmessage = (e: MessageEvent<WorkerMessage>) => {
-      const data = e.data;
-      if (!data) return;
-      if ("type" in data && data.type === "ready") {
-        resolveReady();
-        return;
-      }
-      if (!("id" in data)) return;
-      const entry = pendingReplies.get(data.id);
-      if (!entry) return;
-      pendingReplies.delete(data.id);
-      if (data.ok) entry.resolve({ results: data.results, ms: data.ms });
-      else entry.reject(new Error(data.error || "eval failed"));
-    };
-    worker.onerror = (e: ErrorEvent) => {
-      const msg =
-        e.message ||
-        (e.filename ? `${e.filename}:${e.lineno}` : "worker failed to start");
-      rejectReady(new Error(msg));
-      for (const [, entry] of pendingReplies) entry.reject(new Error(msg));
-      pendingReplies.clear();
-    };
-    worker.onmessageerror = () => {
-      rejectReady(new Error("worker message channel error"));
-    };
+/** Move each result row to its line's height in the editor (side-by-side layout only). */
+function positionResults(): void {
+  const aligned = !stackedLayout.matches && getActiveTab().kind !== "playground";
+  resultsEl.classList.toggle("aligned", aligned);
+  const rows = resultsInner.querySelectorAll<HTMLElement>(".result-row");
+  if (!aligned) {
+    resultsInner.style.height = "";
+    rows.forEach((row) => (row.style.top = ""));
+    return;
   }
-  spawn();
-
-  return {
-    async evaluate(source: string): Promise<EvalOutcome> {
-      await workerReady;
-      const id = ++evalSeq;
-      return new Promise<EvalOutcome>((resolve, reject) => {
-        pendingReplies.set(id, { resolve, reject });
-        worker!.postMessage({ id, source });
+  // Read line positions inside CodeMirror's measure cycle, after real line heights are known
+  // (outside it, the height map can still hold estimates).
+  editor.requestMeasure({
+    key: "results-position",
+    read(view) {
+      const doc = view.state.doc;
+      // The code starts below the tab bar while the results pane starts at the top; measure the gap.
+      const offset =
+        view.documentTop + view.scrollDOM.scrollTop - (resultsInner.getBoundingClientRect().top + resultsEl.scrollTop);
+      const tops = [...rows].map((row) => {
+        const n = Math.min(Math.max(1, Number(row.dataset.line)), doc.lines);
+        return view.lineBlockAt(doc.line(n).from).top + offset;
       });
+      // Extra room so the pane, which is taller than the editor, can always scroll as far as it.
+      const height = view.contentHeight + Math.max(0, offset) + resultsEl.clientHeight;
+      return { tops, height, scroll: view.scrollDOM.scrollTop };
     },
-    stop(): void {
-      if (worker) {
-        for (const [, entry] of pendingReplies) entry.reject(new Error("stopped"));
-        pendingReplies.clear();
-        worker.terminate();
-      }
-      spawn();
+    write({ tops, height, scroll }) {
+      rows.forEach((row, i) => (row.style.top = `${tops[i]}px`));
+      resultsInner.style.height = `${height}px`;
+      resultsEl.scrollTop = scroll;
     },
-  };
+  });
 }
+
+stackedLayout.addEventListener("change", paintResults);
+editor.scrollDOM.addEventListener("scroll", () => {
+  if (resultsEl.classList.contains("aligned")) resultsEl.scrollTop = editor.scrollDOM.scrollTop;
+});
+// The aligned pane doesn't scroll on its own; wheel over it scrolls the editor, which it follows.
+resultsEl.addEventListener("wheel", (e) => {
+  if (!resultsEl.classList.contains("aligned")) return;
+  e.preventDefault();
+  editor.scrollDOM.scrollTop += e.deltaY;
+}, { passive: false });
+
+const runner = createScratchRunner({
+  source: () => editor.state.doc.toString(),
+  onChange: paintResults,
+  onStatus: setStatus,
+});
 
 let timer: ReturnType<typeof setTimeout> | null = null;
-let inFlight = false;
-let pending = false;
-let evalGen = 0;
-
-async function runEval(): Promise<void> {
-  if (inFlight) {
-    pending = true;
-    return;
-  }
-  const myGen = ++evalGen;
-  inFlight = true;
-  const source = editor.state.doc.toString();
-  setStatus("running…", "running");
-  try {
-    const { results, ms } = await transport.evaluate(source);
-    if (myGen !== evalGen) return;
-    lastError = null;
-    lastResults = results;
-    paintResults();
-    setStatus(
-      `${results.length} result${results.length === 1 ? "" : "s"} · ${ms}ms`,
-      "ok",
-    );
-  } catch (e) {
-    if (myGen !== evalGen) return;
-    const msg = e instanceof Error ? e.message : String(e);
-    lastError = msg;
-    lastResults = [];
-    paintResults();
-    setStatus(msg, "error");
-  } finally {
-    inFlight = false;
-    if (pending && myGen === evalGen) {
-      pending = false;
-      runEval();
-    }
-  }
-}
 
 function stopEval(): void {
   if (timer) {
     clearTimeout(timer);
     timer = null;
   }
-  evalGen++;
-  pending = false;
-  inFlight = false;
-  transport.stop();
-  setStatus("stopped", "ready");
+  runner.stop();
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c] as string);
-}
+const preview = previewFrame
+  ? createPreview(previewFrame, {
+      onStatus: setStatus,
+          onReset() {
+        clearConsole();
+        lastValues.clear();
+        applyInlineValues();
+      },
+      onValue(line, text) {
+        lastValues.set(line, text);
+        if (shouldShowInline()) applyInlineValues();
+      },
+      onConsole: appendConsole,
+    })
+  : null;
 
-// Babel is heavy; keep it out of the initial bundle and load it the first time
-// a playground actually renders. Cached across renders after that.
-let transpileMod: typeof import("./transpile.ts") | null = null;
-
-// The inspector, transpiled to plain JS once, inlined into the preview so its
-// console output matches the scratchpad's fidelity (Map(1) {…} etc.).
-let inspectorJs: string | null = null;
-async function getInspectorJs(): Promise<string> {
-  if (inspectorJs !== null) return inspectorJs;
-  if (!transpileMod) transpileMod = await import("./transpile.ts");
-  inspectorJs = transpileMod.transpile(inspectorRaw, { instrument: false }).code;
-  return inspectorJs;
-}
-
-// Each render gets a fresh nonce; console/error messages tagged with a stale
-// nonce (from a previous srcdoc still unloading) are dropped by the listener.
-let previewNonce = 0;
-let currentPreviewNonce = "";
-
-const escapeScriptClose = (code: string): string =>
-  code.replace(/<\/script/gi, "<\\/script");
-
-/** Assemble the playground document and load it into the sandboxed iframe. */
-async function renderPreview(): Promise<void> {
+/** Render the active playground tab into the preview. */
+function renderPreview(): void {
   const t = getActiveTab();
-  if (t.kind !== "playground" || !previewFrame) return;
+  if (t.kind !== "playground" || !preview) return;
   flushEditor();
-  const { html: htmlSrc = "", css: cssSrc = "", js: jsSrc = "" } = t;
-
-  const instrument = playgroundInline;
-  let userBody: string;
-  try {
-    if (!transpileMod) transpileMod = await import("./transpile.ts");
-    const { code } = transpileMod.transpile(jsSrc, { instrument });
-    userBody = `<script type="module">\n${escapeScriptClose(code)}\n</script>`;
-    setStatus("rendered", "ok");
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    userBody = `<pre style="margin:16px;color:#b00020;font:13px ui-monospace,monospace;white-space:pre-wrap">${escapeHtml(msg)}</pre>`;
-    setStatus(msg, "error");
-  }
-
-  const inspector = await getInspectorJs();
-
-  // The active tab may have changed while Babel/JS loaded — don't clobber.
-  if (getActiveTab().id !== t.id) return;
-
-  const nonce = String(++previewNonce);
-  currentPreviewNonce = nonce;
-  clearConsole();
-  lastValues.clear();
-  applyInlineValues();
-
-  const bootstrap =
-    `<script type="module">\n${escapeScriptClose(inspector)}\n${escapeScriptClose(buildBridge(nonce, instrument))}\n</script>`;
-
-  previewFrame.srcdoc =
-    `<!doctype html><html><head><meta charset="utf-8">` +
-    `<style>${cssSrc}</style>${bootstrap}</head><body>\n${htmlSrc}\n${userBody}\n</body></html>`;
+  void preview.render(t, playgroundInline, () => getActiveTab().id === t.id);
 }
 
 // ---------- inline values (playground JS) ----------
@@ -835,14 +685,21 @@ function shouldShowInline(): boolean {
   return playgroundInline && t.kind === "playground" && panelOf(t) === "js";
 }
 
-/** Push the collected values (or nothing) into the editor's decoration field. */
+/**
+ * Push values into the editor at the end of their lines. Scratchpads always show them (the
+ * results pane keeps the full, multi-line versions); playgrounds follow the setting.
+ */
 function applyInlineValues(): void {
-  const show = shouldShowInline();
-  const values = show
-    ? [...lastValues.entries()]
-        .filter(([, text]) => text !== "undefined")
-        .map(([line, text]) => ({ line, text }))
-    : [];
+  const t = getActiveTab();
+  let values: InlineValue[] = [];
+  if (t.kind !== "playground") {
+    // Scratchpads have no results pane: a multi-line value can open in full under its line.
+    values = runner.inlineValues();
+  } else if (shouldShowInline()) {
+    values = [...lastValues.entries()]
+      .filter(([, text]) => text !== "undefined")
+      .map(([line, text]) => ({ line, text }));
+  }
   editor.dispatch({ effects: setInlineValues.of(values) });
 }
 
@@ -869,31 +726,18 @@ function appendConsole(level: string, text: string): void {
   if (consoleCountEl) consoleCountEl.textContent = String(consoleCount);
 }
 
-window.addEventListener("message", (e: MessageEvent) => {
-  const d = e.data as PreviewMessage | undefined;
-  if (!d || d.source !== PREVIEW_SOURCE) return;
-  // Only trust the current preview frame, and only its current render.
-  if (previewFrame && e.source !== previewFrame.contentWindow) return;
-  if (d.nonce !== currentPreviewNonce) return;
-  if (d.type === "value") {
-    if (typeof d.line === "number") {
-      lastValues.set(d.line, (d.parts || [])[0] ?? "");
-      if (shouldShowInline()) applyInlineValues();
-    }
-    return;
-  }
-  appendConsole(d.level, (d.parts || []).join(" "));
-});
-
 document.getElementById("console-clear")?.addEventListener("click", clearConsole);
-document.getElementById("console-toggle")?.addEventListener("click", () => {
-  document.getElementById("console-drawer")?.classList.toggle("collapsed");
+// Collapsed by default; the header still shows how many messages arrived.
+document.getElementById("console-toggle")?.addEventListener("click", (e) => {
+  const open = !document.getElementById("console-drawer")?.classList.toggle("collapsed");
+  (e.currentTarget as HTMLElement).setAttribute("aria-expanded", String(open));
 });
 
 /** Route a run/render to the right engine based on the active tab kind. */
 function runActive(): void {
-  if (getActiveTab().kind === "playground") void renderPreview();
-  else void runEval();
+  recorder?.onRun();
+  if (getActiveTab().kind === "playground") renderPreview();
+  else void runner.run();
 }
 
 function schedule(): void {
@@ -933,22 +777,17 @@ document.getElementById("btn-run")!.addEventListener("click", () => {
 
 document.getElementById("btn-stop")!.addEventListener("click", stopEval);
 
-const isEmbedded =
-  new URLSearchParams(window.location.search).get("embed") === "1" ||
-  window.parent !== window;
-
-if (isEmbedded || tauriCore) {
+if (isEmbedded) {
   const home = document.getElementById("btn-home");
   if (home) home.style.display = "none";
 }
 
-// The desktop app uses native OS window decorations (see tauri.conf.json), so
-// there's no custom title bar to wire up — the OS draws the title bar, traffic
-// lights / min-max-close, and handles window dragging.
-
 if (isEmbedded) {
   const expand = document.getElementById("btn-expand");
   if (expand) {
+    // It lived in the results pane, which scratchpads no longer show; keep it in the tab bar.
+    document.querySelector(".tab-bar")?.insertBefore(expand, document.getElementById("btn-new-tab"));
+    expand.classList.add("in-tab-bar");
     expand.classList.remove("hidden");
     expand.addEventListener("click", () => {
       try {
@@ -958,6 +797,13 @@ if (isEmbedded) {
       }
     });
   }
+}
+
+if (isEmbedded) {
+  // The landing page can't hear keys typed in here; a popover or CodeMirror that used Esc already prevented it.
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !e.defaultPrevented) window.parent.postMessage({ type: "collapse" }, "*");
+  });
 }
 
 window.addEventListener("message", (e: MessageEvent) => {
@@ -990,6 +836,7 @@ function loadActiveIntoEditor(): void {
   const t = getActiveTab();
   editor.dispatch({
     changes: { from: 0, to: editor.state.doc.length, insert: slotContent(t) },
+    annotations: slotLoadAnnotations,
     effects: [
       languageCompartment.reconfigure(slotLanguageExt(t)),
       tsCompartment.reconfigure(tsExtFor(t)),
@@ -1001,12 +848,17 @@ function loadActiveIntoEditor(): void {
 function syncViewToActiveTab(): void {
   const t = getActiveTab();
   const isPlay = t.kind === "playground";
+  // Scratchpads show values in the code, so only playgrounds (preview) use the right pane.
+  document.querySelector("main")?.classList.toggle("no-results", !isPlay);
   panelTabsEl?.classList.toggle("hidden", !isPlay);
   previewPane?.classList.toggle("hidden", !isPlay);
   resultsInner.classList.toggle("hidden", isPlay);
+  positionResults();
+  renderSaveStatus();
   renderPanelTabs();
   // Values belong to whatever tab last rendered; drop them until this tab re-runs.
   lastValues.clear();
+  runner.clear();
   applyInlineValues();
 }
 
@@ -1100,6 +952,7 @@ function closeTab(id: string): void {
   if (tabs.length <= 1) return;
   const idx = tabs.findIndex((t) => t.id === id);
   if (idx === -1) return;
+  void account?.onClose(tabs[idx]);
   tabs.splice(idx, 1);
   if (activeId === id) {
     activeId = tabs[Math.max(0, idx - 1)].id;
@@ -1125,6 +978,7 @@ function toggleTabLang(id: string): void {
   }
   renderTabs();
   persistTabs();
+  showToast(`${t.name} is now ${t.language === "typescript" ? "TypeScript" : "JavaScript"}. Click the badge again to switch back.`);
 }
 
 // --- playground sub-tab bar (HTML / CSS / JS) ---
@@ -1153,21 +1007,47 @@ function switchPanel(p: PanelId): void {
   t.activePanel = p;
   loadActiveIntoEditor();
   renderPanelTabs();
+  recorder?.onOpen(p);
   // Same tab/render — show its values when landing on JS, hide otherwise.
   applyInlineValues();
   persistTabs();
 }
 
+/** Keyboard on a file tab: arrows/Home/End move focus, Enter/Space opens, Delete closes. */
+function onTabKey(e: KeyboardEvent, id: string): void {
+  const all = [...(tabsEl?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [])];
+  const i = all.indexOf(e.currentTarget as HTMLElement);
+  const moveTo = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: all.length - 1 }[e.key];
+  if (moveTo !== undefined) {
+    e.preventDefault();
+    all[(moveTo + all.length) % all.length]?.focus();
+  } else if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault();
+    activateTab(id);
+  } else if ((e.key === "Delete" || e.key === "Backspace") && (e.metaKey || e.ctrlKey)) {
+    // A modifier, so a stray Delete while focus is on the tab strip can't close work.
+    e.preventDefault();
+    closeTab(id);
+  }
+}
+
 function renderTabs(): void {
   if (!tabsEl) return;
+  // Re-rendering replaces the tab elements; keep keyboard focus on the strip if it was there.
+  const hadFocus = tabsEl.contains(document.activeElement);
   tabsEl.innerHTML = "";
   for (const t of tabs) {
+    const selected = t.id === activeId;
     const el = document.createElement("div");
-    el.className = "tab" + (t.id === activeId ? " active" : "");
+    el.className = "tab" + (selected ? " active" : "");
     el.dataset.id = t.id;
     el.setAttribute("role", "tab");
+    el.setAttribute("aria-selected", String(selected));
+    el.tabIndex = selected ? 0 : -1;
+    el.addEventListener("keydown", (e) => onTabKey(e, t.id));
 
     const lang = document.createElement("button");
+    lang.tabIndex = -1;
     if (t.kind === "playground") {
       lang.className = "tab-lang lang-play";
       lang.textContent = "</>";
@@ -1187,54 +1067,133 @@ function renderTabs(): void {
     const name = document.createElement("span");
     name.className = "tab-name";
     name.textContent = t.name;
-
-    const close = document.createElement("span");
-    close.className = "tab-close";
-    close.textContent = "×";
-    close.title = "Close";
-    close.addEventListener("click", (e) => {
-      e.stopPropagation();
-      closeTab(t.id);
-    });
+    el.title = t.name; // long experiment names are cut off in the strip
 
     el.addEventListener("click", () => activateTab(t.id));
 
     el.appendChild(lang);
     el.appendChild(name);
+    const close = document.createElement("button");
+    close.className = "tab-close";
+    close.textContent = "×";
+    close.tabIndex = -1;
+    close.title = "Close (⌘ Delete)";
+    close.setAttribute("aria-label", `Close ${t.name}`);
+    close.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeTab(t.id);
+    });
     el.appendChild(close);
     tabsEl.appendChild(el);
   }
+  if (hadFocus) tabsEl.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
 
-  const addTs = document.createElement("button");
-  addTs.className = "tab-add ts";
-  addTs.textContent = "+TS";
-  addTs.title = "New TypeScript tab";
-  addTs.addEventListener("click", () => newTab("typescript"));
-  tabsEl.appendChild(addTs);
+  // Bring the open tab into view, and fade the strip's edge when more tabs are off-screen.
+  showActiveTab();
+}
 
-  const addJs = document.createElement("button");
-  addJs.className = "tab-add js";
-  addJs.textContent = "+JS";
-  addJs.title = "New JavaScript tab";
-  addJs.addEventListener("click", () => newTab("javascript"));
-  tabsEl.appendChild(addJs);
+/** Where the open tab's work is saved, with a Retry when a save to the account failed. */
+function renderSaveStatus(): void {
+  const el = document.getElementById("save-status");
+  if (!el) return;
+  const t = getActiveTab();
+  const s = account ? account.statusFor(t) : null;
+  el.replaceChildren();
+  el.classList.toggle("hidden", !s);
+  el.classList.toggle("failed", !!s?.retry);
+  if (!s) return showActiveTab();
+  el.title = s.reason ?? "";
+  const long = document.createElement("span");
+  long.className = "save-long";
+  long.textContent = s.text;
+  const short = document.createElement("span");
+  short.className = "save-short";
+  short.textContent = s.short;
+  el.append(long, short);
+  if (s.retry) {
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "save-retry";
+    retry.textContent = "Retry";
+    retry.addEventListener("click", s.retry);
+    el.append(retry);
+  }
+  showActiveTab(); // the status's width sets the strip's width
+}
 
-  const addNpm = document.createElement("button");
-  addNpm.className = "tab-add npm";
-  addNpm.textContent = "+npm";
-  addNpm.title = "New tab with an npm: import template";
-  addNpm.addEventListener("click", () => newTab("typescript", NPM_TEMPLATE));
-  tabsEl.appendChild(addNpm);
+// The strip fades its right edge when more tabs are off-screen (see #tabs.more-right); the open
+// tab has to sit fully clear of that fade, or it reads as covered. These look the strip up
+// directly because the save status calls them early in startup.
+function showActiveTab(): void {
+  const strip = document.getElementById("tabs");
+  const active = strip?.querySelector<HTMLElement>(".tab.active");
+  if (!strip || !active) return;
+  const FADE = 48;
+  const box = strip.getBoundingClientRect();
+  const tab = active.getBoundingClientRect();
+  // Starts off-screen, or too wide to fit at all (long experiment names on a phone): show its start.
+  if (tab.left < box.left || tab.width > box.width - FADE) strip.scrollLeft += tab.left - box.left;
+  else {
+    const hidden = tab.right - (box.right - FADE);
+    // Only when more tabs follow: the last tab can sit at the edge, which then has no fade.
+    if (hidden > 0 && strip.scrollLeft + strip.clientWidth < strip.scrollWidth) {
+      strip.scrollLeft = Math.min(strip.scrollLeft + hidden, strip.scrollWidth - strip.clientWidth);
+    }
+  }
+  markTabOverflow();
+}
 
-  const addPlay = document.createElement("button");
-  addPlay.className = "tab-add play";
-  addPlay.textContent = "+Play";
-  addPlay.title = "New playground (HTML/CSS/JS with live preview)";
-  addPlay.addEventListener("click", () => newPlayground());
-  tabsEl.appendChild(addPlay);
+function markTabOverflow(): void {
+  const strip = document.getElementById("tabs");
+  if (!strip) return;
+  strip.classList.toggle("more-right", strip.scrollWidth - strip.clientWidth - strip.scrollLeft > 1);
+}
+tabsEl?.addEventListener("scroll", markTabOverflow);
+// A narrower window (or the phone layout) can push the open tab out of view.
+window.addEventListener("resize", showActiveTab);
+// Web fonts change tab widths after the first render.
+void document.fonts?.ready.then(showActiveTab);
+
+const newTabBtn = document.getElementById("btn-new-tab");
+const newTabMenu = document.getElementById("new-tab-menu");
+if (newTabBtn && newTabMenu) {
+  // Anchor under the + button; on phones the sheet rules position it instead.
+  newTabBtn.addEventListener("click", () => {
+    const r = newTabBtn.getBoundingClientRect();
+    const sheet = window.matchMedia("(max-width: 767px)").matches;
+    newTabMenu.style.top = sheet ? "" : `${r.bottom + 4}px`;
+    newTabMenu.style.left = sheet ? "" : `${Math.max(8, r.right - 260)}px`;
+  });
+  const menu = wirePopover(newTabBtn, newTabMenu);
+  newTabMenu.querySelectorAll<HTMLElement>(".new-tab-option").forEach((opt) =>
+    opt.addEventListener("click", () => {
+      menu.close(false);
+      const kind = opt.dataset.new;
+      if (kind === "playground") newPlayground();
+      else if (kind === "npm") newTab("typescript", NPM_TEMPLATE);
+      else newTab(kind === "javascript" ? "javascript" : "typescript");
+      editor.focus();
+    }),
+  );
 }
 
 renderTabs();
+
+account = initAccount({
+  tabs: () => tabs,
+  addTabs: (list) => {
+    tabs.push(...list.map(normalizeTab));
+    renderTabs();
+    persistTabs();
+  },
+  persist: persistTabs,
+  showToast,
+});
+
+account.onChange(renderSaveStatus);
+renderSaveStatus();
+
+recorder = initRecorder({ activeTab: getActiveTab, showToast });
 
 // ---------- toast ----------
 
@@ -1254,17 +1213,7 @@ const examplesBtn = document.getElementById("btn-examples");
 const examplesPopover = document.getElementById("examples-popover");
 
 if (examplesBtn && examplesPopover) {
-  examplesBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    examplesPopover.classList.toggle("hidden");
-  });
-  document.addEventListener("click", (e) => {
-    if (examplesPopover.classList.contains("hidden")) return;
-    const target = e.target as Node | null;
-    if (!target) return;
-    if (examplesPopover.contains(target) || examplesBtn.contains(target)) return;
-    examplesPopover.classList.add("hidden");
-  });
+  const examples = wirePopover(examplesBtn, examplesPopover);
 
   for (const item of examplesPopover.querySelectorAll<HTMLElement>(
     ".example-item",
@@ -1284,7 +1233,8 @@ if (examplesBtn && examplesPopover) {
         const ext = ex.language === "typescript" ? "ts" : "js";
         openBinTab(`${ex.id}.${ext}`, ex.language, ex.code);
       }
-      examplesPopover.classList.add("hidden");
+      examples.close(false);
+      editor.focus();
     });
   }
 }
@@ -1350,17 +1300,7 @@ const settingsBtn = document.getElementById("btn-settings");
 const popover = document.getElementById("settings-popover");
 
 if (settingsBtn && popover) {
-  settingsBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    popover.classList.toggle("hidden");
-  });
-  document.addEventListener("click", (e) => {
-    if (popover.classList.contains("hidden")) return;
-    const target = e.target as Node | null;
-    if (!target) return;
-    if (popover.contains(target) || settingsBtn.contains(target)) return;
-    popover.classList.add("hidden");
-  });
+  wirePopover(settingsBtn, popover);
 
   const VAR_MAP: Record<keyof ThemeVariant, string> = {
     bg: "--bg",
@@ -1379,7 +1319,7 @@ if (settingsBtn && popover) {
   const getThemes = (): Record<string, ThemeDefinition> =>
     window.__JUSTUI__?.themes || {};
   const currentThemeId = (): string =>
-    document.documentElement.dataset.themeId || "espresso";
+    document.documentElement.dataset.themeId || "classroom";
   const currentThemeMode = (): Mode =>
     document.documentElement.dataset.themeMode === "light" ? "light" : "dark";
   const applyVariant = (variant: ThemeVariant, mode: Mode): void => {
@@ -1391,6 +1331,7 @@ if (settingsBtn && popover) {
     }
     if (mode === "dark") root.classList.add("dark");
     else root.classList.remove("dark");
+    ensureReadableBadges();
   };
   const applyTheme = (themeId: string, mode: Mode): void => {
     const themes = getThemes();
@@ -1495,6 +1436,18 @@ if (settingsBtn && popover) {
     });
   }
 
+  // Recording is for the lesson author; students don't see the button unless they opt in.
+  const authorToggle = document.getElementById("opt-author") as HTMLInputElement | null;
+  const showRecord = (on: boolean) => document.getElementById("btn-record")?.classList.toggle("author-only", !on);
+  if (authorToggle) {
+    authorToggle.checked = readBool(AUTHOR_KEY, false);
+    showRecord(authorToggle.checked);
+    authorToggle.addEventListener("change", () => {
+      localStorage.setItem(AUTHOR_KEY, String(authorToggle.checked));
+      showRecord(authorToggle.checked);
+    });
+  }
+
   const inlineToggle = document.getElementById("opt-playground-inline") as HTMLInputElement | null;
   if (inlineToggle) {
     inlineToggle.checked = playgroundInline;
@@ -1566,23 +1519,26 @@ async function formatBuffer(): Promise<void> {
   const splitter = document.getElementById("splitter");
   const mainEl = document.querySelector("main");
   if (!splitter || !mainEl) return;
-  let dragging = false;
-  splitter.addEventListener("mousedown", (e) => {
-    dragging = true;
+  // Pointer capture keeps the drag alive while the cursor is over the preview iframe,
+  // which would otherwise swallow the move and release events.
+  splitter.addEventListener("pointerdown", (e) => {
+    splitter.setPointerCapture(e.pointerId);
     document.body.style.cursor = "col-resize";
     e.preventDefault();
   });
-  window.addEventListener("mousemove", (e) => {
-    if (!dragging) return;
+  splitter.addEventListener("pointermove", (e) => {
+    if (!splitter.hasPointerCapture(e.pointerId)) return;
     const rect = mainEl.getBoundingClientRect();
     const rightWidth = Math.max(
       200,
       Math.min(rect.width - 200, rect.right - e.clientX),
     );
-    (mainEl as HTMLElement).style.gridTemplateColumns = `1fr 4px ${rightWidth}px`;
+    // A variable rather than gridTemplateColumns, so the phone layout's media query still wins.
+    (mainEl as HTMLElement).style.setProperty("--results-width", `${rightWidth}px`);
   });
-  window.addEventListener("mouseup", () => {
-    dragging = false;
+  const endDrag = () => {
     document.body.style.cursor = "";
-  });
+  };
+  splitter.addEventListener("pointerup", endDrag);
+  splitter.addEventListener("lostpointercapture", endDrag);
 })();

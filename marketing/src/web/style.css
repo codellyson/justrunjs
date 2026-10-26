@@ -1,39 +1,24 @@
-/* Geist + Geist Mono via jsdelivr's @fontsource-variable mirror so the editor
- * matches the marketing site without dragging a JS font loader into a plain
- * static page. */
-@font-face {
-  font-family: "Geist Variable";
-  src: url("https://cdn.jsdelivr.net/npm/@fontsource-variable/geist@5.1.0/files/geist-latin-wght-normal.woff2") format("woff2");
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Geist Mono Variable";
-  src: url("https://cdn.jsdelivr.net/npm/@fontsource-variable/geist-mono@5.1.0/files/geist-mono-latin-wght-normal.woff2") format("woff2");
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
+/* Recursive (self-hosted, imported by the page): the same type as the lessons. Code uses its
+ * casual mono, set with font-variation-settings wherever --font-mono is. */
 
 /*
  * Theme tokens — applied by theme-boot.js at startup. These :root values
- * are the SSR/no-JS fallback (Espresso dark), so the page never paints
+ * are the SSR/no-JS fallback (Classroom dark), so the page never paints
  * unstyled even if the boot script fails.
  */
 :root {
-  --bg: 22 20 18;
-  --bg-secondary: 37 33 30;
-  --border: 56 50 45;
-  --text-primary: 232 222 210;
-  --text-secondary: 178 167 152;
-  --text-muted: 124 114 102;
-  --accent: 168 180 220;
-  --accent-hover: 195 205 235;
-  --accent-text: 22 20 18;
-  --danger: 220 105 95;
-  --success: 165 195 130;
-  --warning: 230 195 115;
+  --bg: 26 21 18;
+  --bg-secondary: 34 28 24;
+  --border: 58 49 42;
+  --text-primary: 243 234 223;
+  --text-secondary: 214 203 189;
+  --text-muted: 179 165 150;
+  --accent: 240 163 94;
+  --accent-hover: 244 180 122;
+  --accent-text: 26 21 18;
+  --danger: 242 167 160;
+  --success: 127 203 181;
+  --warning: 240 194 122;
 
   /* Language identity colours — absolute (constant across themes), so the
    * editor chrome speaks the same vocabulary as syntax highlighting. Tuned to
@@ -45,9 +30,9 @@
   --lang-npm: 203 72 71; /* npm red */
   --lang-play: 149 123 246; /* Playground violet */
 
-  --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo,
+  --font-mono: "Recursive Variable", ui-monospace, SFMono-Regular, Menlo,
     Consolas, monospace;
-  --font-sans: "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
+  --font-sans: "Recursive Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
 }
 
@@ -98,6 +83,7 @@ body {
   background: rgb(var(--bg));
   color: rgb(var(--text-primary));
   font-family: var(--font-sans);
+  font-variation-settings: "MONO" 0, "CASL" 0.6;
 }
 
 body {
@@ -107,10 +93,6 @@ body {
   height: 100vh;
   overflow: hidden;
 }
-
-/* The desktop app uses native OS window decorations, so there's no custom
- * title bar or top-row grid reservation — the OS draws the title bar above
- * the webview, and the sidebar + main fill the whole webview height. */
 
 /* ---------- sidebar ---------- */
 
@@ -157,7 +139,10 @@ body {
 #btn-stop:hover { color: rgb(var(--danger)); }
 #btn-examples:hover { color: rgb(var(--lang-play)); }
 #btn-share:hover { color: rgb(var(--lang-ts)); }
+#btn-record:hover, #btn-record.recording { color: rgb(var(--danger)); }
+#btn-record.author-only:not(.recording) { display: none; }
 #btn-settings:hover { color: rgb(var(--warning)); }
+#btn-account:hover, #btn-account.signed-in { color: rgb(var(--accent)); }
 #btn-home:hover { color: rgb(var(--accent)); }
 
 .sidebar-spacer {
@@ -200,7 +185,7 @@ main {
   display: grid;
   /* Equal 50/50 split between editor and results by default. The splitter
    * can still be dragged at runtime; this just sets the starting ratio. */
-  grid-template-columns: 1fr 4px 1fr;
+  grid-template-columns: minmax(0, 1fr) 4px var(--results-width, minmax(0, 1fr));
   min-height: 0;
   min-width: 0;
   height: 100%;
@@ -213,10 +198,17 @@ main {
   min-height: 0;
   height: 100%;
   overflow: hidden;
-  /* 40px file-tab bar, an auto panel-tab bar (0 when hidden), editor fills rest. */
+  /* 40px file-tab bar, lesson header and panel-tab bar (0 when hidden), editor fills rest. */
   display: grid;
-  grid-template-rows: 40px auto 1fr;
+  grid-template-rows: 40px auto 1fr auto;
 }
+
+/* Pinned rows: #panel-tabs is display:none on scratchpad tabs, and auto-placement
+ * would then shift the editor into the panel row and the lesson bar into 1fr. */
+.tab-bar { grid-row: 1; }
+#panel-tabs { grid-row: 2; }
+#editor-host { grid-row: 3; }
+#lesson-bar { grid-row: 4; }
 
 #editor-host {
   position: relative;
@@ -241,11 +233,21 @@ main {
 #splitter {
   background: transparent;
   cursor: col-resize;
+  position: relative;
+  touch-action: none;
+}
+/* A wider invisible grab area than the 4px track. */
+#splitter::after {
+  content: "";
+  position: absolute;
+  inset: 0 -4px;
+  z-index: 3;
 }
 
 #results {
   background: rgb(var(--bg));
   font-family: var(--font-mono);
+  font-variation-settings: "MONO" 1, "CASL" 1;
   font-size: 13.5px;
   line-height: 21px;
   overflow: auto;
@@ -335,11 +337,22 @@ main {
 .v-array    { color: rgb(var(--text-secondary)); }
 .v-function { color: rgb(var(--warning)); }
 
+/* Side-by-side layout: rows are pinned to their source line (see positionResults). */
+#results.aligned { overflow: hidden; }
+#results.aligned #results-inner { position: relative; padding-bottom: 0; }
+#results.aligned .result-row { position: absolute; left: 0; right: 0; }
+#results.aligned .result-row .value {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .result-placeholder {
   color: rgb(var(--text-muted));
   font-style: italic;
   padding: 24px 16px;
   font-family: var(--font-sans);
+  font-variation-settings: "MONO" 0, "CASL" 0.6;
   font-size: 13px;
 }
 
@@ -385,17 +398,20 @@ main {
 }
 
 .tab .tab-lang {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.5px;
   padding: 2px 6px;
   border-radius: 4px;
   background: rgb(var(--lang-color, var(--text-muted)) / 0.16);
-  color: rgb(var(--lang-color, var(--text-muted)));
+  /* Language colours are fixed across themes; main.ts (ensureReadableBadges) works out how
+   * far to push them toward black or white for ≥4.5:1 on the current theme. */
+  color: color-mix(in srgb, rgb(var(--lang-color, var(--text-muted))) var(--lang-ink-share, 55%), rgb(var(--lang-ink-target, var(--text-primary))));
   text-transform: uppercase;
   border: 0;
   cursor: pointer;
   font-family: var(--font-mono);
+  font-variation-settings: "MONO" 1, "CASL" 1;
   transition: background 0.12s ease;
 }
 
@@ -412,9 +428,15 @@ main {
 
 .tab .tab-name {
   font-family: var(--font-mono);
+  font-variation-settings: "MONO" 1, "CASL" 1;
 }
 
 .tab .tab-close {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-family: inherit;
+  cursor: pointer;
   width: 18px;
   height: 18px;
   display: inline-flex;
@@ -432,28 +454,81 @@ main {
   color: rgb(var(--text-primary));
 }
 
-.tab-add {
+/* The strip scrolls; the + stays put beside it. */
+.tab-bar {
+  display: flex;
+  min-width: 0;
+  background: rgb(var(--bg-secondary));
+  border-bottom: 1px solid rgb(var(--border));
+}
+.tab-bar #tabs { flex: 1 1 auto; min-width: 0; border-bottom: 0; }
+/* More tabs off to the right: fade the edge so the strip reads as scrollable. */
+#tabs.more-right { mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); }
+.save-status {
+  flex: none;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  font-size: 12px;
+  color: rgb(var(--text-secondary));
+  white-space: nowrap;
+}
+.save-status.hidden { display: none; }
+.save-status.failed { color: rgb(var(--warning)); }
+.save-retry {
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  color: inherit;
+  font: inherit;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.save-short { display: none; }
+@media (max-width: 767px) {
+  /* Little room beside the tabs: the short wording. */
+  .save-status { padding: 0 8px; }
+  .save-long { display: none; }
+  .save-short { display: inline; }
+}
+
+.tab-new {
+  flex: none;
+  width: 40px;
   background: transparent;
   border: 0;
-  color: rgb(var(--text-muted));
-  height: 100%;
-  cursor: pointer;
-  font-size: 12.5px;
-  font-family: var(--font-mono);
+  border-left: 1px solid rgb(var(--border));
+  color: rgb(var(--text-secondary));
+  font-size: 18px;
   line-height: 1;
-  padding: 0 11px;
-  letter-spacing: 0.3px;
+  cursor: pointer;
 }
+.tab-new:hover { color: rgb(var(--text-primary)); background: rgb(var(--text-primary) / 0.03); }
 
-.tab-add:hover {
+.new-tab-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  padding: 8px 12px;
+  font: inherit;
   color: rgb(var(--text-primary));
-  background: rgb(var(--text-primary) / 0.03);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
 }
+.new-tab-option:hover { background: rgb(var(--accent) / 0.1); }
+.new-tab-option .example-lang { min-width: 34px; text-align: center; }
 
-.tab-add.ts:hover { color: rgb(var(--lang-ts)); }
-.tab-add.js:hover { color: rgb(var(--lang-js)); }
-.tab-add.npm:hover { color: rgb(var(--lang-npm)); }
-.tab-add.play:hover { color: rgb(var(--lang-play)); }
+@media (min-width: 768px) {
+  /* main.ts anchors it under the + button. Doubled class so it beats the shared
+   * .settings-popover rule (bottom: 12px) that comes later in this file. */
+  .settings-popover.new-tab-menu { bottom: auto; width: 260px; }
+}
 
 /* ---------- settings popover ---------- */
 
@@ -630,10 +705,14 @@ main {
 body.hide-line-numbers .cm-gutters { display: none; }
 
 /* Inline per-line values in the playground JS editor (RunJS-style). */
+/* Errors wrap with the line instead of running off the edge. */
+.cm-inline-value.cm-inline-error { color: rgb(var(--danger)); font-style: normal; white-space: pre-wrap; }
+.cm-error-line { background: rgb(var(--danger) / 0.1); }
+
 .cm-inline-value {
-  color: rgb(var(--text-muted));
+  /* Same readable tone as comments; muted text at partial opacity fell to 3.9:1. */
+  color: color-mix(in srgb, rgb(var(--text-muted)) 50%, rgb(var(--text-secondary)));
   font-style: italic;
-  opacity: 0.85;
   white-space: pre;
   pointer-events: none;
   user-select: none;
@@ -658,6 +737,7 @@ body.hide-line-numbers .cm-gutters { display: none; }
   border-bottom: 2px solid transparent;
   color: rgb(var(--text-muted));
   font-family: var(--font-mono);
+  font-variation-settings: "MONO" 1, "CASL" 1;
   font-size: 11.5px;
   letter-spacing: 0.4px;
   text-transform: uppercase;
@@ -762,6 +842,7 @@ body.hide-line-numbers .cm-gutters { display: none; }
   flex: 1 1 auto;
   overflow: auto;
   font-family: var(--font-mono);
+  font-variation-settings: "MONO" 1, "CASL" 1;
   font-size: 12.5px;
   line-height: 1.5;
   padding: 2px 0 8px;
@@ -854,6 +935,7 @@ body.hide-line-numbers .cm-gutters { display: none; }
 }
 
 .example-item:hover { background: rgb(var(--accent) / 0.1); }
+a.example-item { color: inherit; text-decoration: none; }
 
 .example-item-top {
   display: flex;
@@ -891,7 +973,8 @@ body.hide-line-numbers .cm-gutters { display: none; }
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 20px;
+  /* Below the tab bar, clear of the lesson bar and its Back to lesson button. */
+  top: 52px;
   transform: translateX(-50%);
   background: rgb(var(--bg-secondary));
   border: 1px solid rgb(var(--border));
@@ -909,3 +992,277 @@ body.hide-line-numbers .cm-gutters { display: none; }
   opacity: 0;
   pointer-events: none;
 }
+
+/* ---------- lesson mode: recording + playback bar under the editor ---------- */
+
+.lesson-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-top: 1px solid rgb(var(--border));
+  background: rgb(var(--bg-secondary));
+  font-size: 12px;
+  color: rgb(var(--text-secondary));
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.lesson-bar.hidden { display: none; }
+
+.lesson-btn {
+  background: transparent;
+  border: 1px solid rgb(var(--border));
+  border-radius: 6px;
+  color: rgb(var(--text-primary));
+  font: inherit;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.lesson-btn:hover { border-color: rgb(var(--text-muted)); }
+.lesson-btn.primary {
+  background: rgb(var(--accent));
+  border-color: rgb(var(--accent));
+  color: rgb(var(--accent-text));
+  font-weight: 600;
+}
+.lesson-btn.primary:hover { background: rgb(var(--accent-hover)); border-color: rgb(var(--accent-hover)); }
+/* The speed menu matches the buttons instead of the platform's select chrome. */
+select.lesson-btn {
+  appearance: none;
+  padding-right: 24px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 13px) 55%, calc(100% - 9px) 55%;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+}
+select.lesson-btn option { background: rgb(var(--bg-secondary)); color: rgb(var(--text-primary)); }
+
+.lesson-time { font-family: var(--font-mono);
+  font-variation-settings: "MONO" 1, "CASL" 1; font-variant-numeric: tabular-nums; }
+.lesson-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgb(var(--danger));
+  animation: lesson-pulse 1.2s ease-in-out infinite;
+}
+@keyframes lesson-pulse { 50% { opacity: 0.3; } }
+
+@media (prefers-reduced-motion: reduce) { .lesson-dot { animation: none; } }
+
+/* ---------- account popover ---------- */
+
+.account-section { padding: 8px 12px 12px; }
+/* The section already pads the panel; the shared title padding would indent it past the text. */
+.account-section .settings-title { padding-inline: 0; }
+.account-text { margin: 6px 0; line-height: 1.45; }
+.account-muted { color: rgb(var(--text-secondary)); }
+.account-error { color: rgb(var(--danger)); min-height: 0; }
+.account-error:empty { display: none; }
+.account-form { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.account-input {
+  font: inherit;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid rgb(var(--border));
+  background: rgb(var(--bg));
+  color: rgb(var(--text-primary));
+}
+.account-input:focus { outline: 2px solid rgb(var(--accent) / 0.5); border-color: rgb(var(--accent)); }
+.account-submit {
+  font: inherit;
+  font-weight: 600;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: rgb(var(--accent));
+  color: rgb(var(--accent-text, var(--bg)));
+  cursor: pointer;
+}
+.account-submit:hover { background: rgb(var(--accent-hover, var(--accent))); }
+
+/* ---------- keyboard focus ---------- */
+
+/* One themed focus ring for the editor chrome; CodeMirror draws its own caret. */
+:where(button, select, a, input, [role="tab"]):focus-visible {
+  outline: 2px solid rgb(var(--accent));
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+/* ---------- phones: editor over preview, actions in a bottom bar ---------- */
+
+@media (max-width: 767px) {
+  body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    height: 100dvh;
+  }
+  #sidebar {
+    grid-row: 2;
+    flex-direction: row;
+    justify-content: space-between;
+    padding: 2px 8px calc(2px + env(safe-area-inset-bottom));
+    border-right: 0;
+    border-top: 1px solid rgb(var(--border));
+    overflow-x: auto;
+  }
+  /* Recording happens on a laptop; the status dot only explains itself on hover. */
+  #btn-record,
+  .sidebar-status,
+  .sidebar-spacer { display: none; }
+
+  main {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1.4fr) minmax(0, 1fr);
+  }
+  #splitter { display: none; }
+  #results {
+    border-left: 0;
+    border-top: 1px solid rgb(var(--border));
+  }
+  .console-drawer { height: 96px; }
+  .lesson-bar { gap: 8px; padding: 6px 8px; }
+
+  /* Popovers become sheets above the bottom bar. */
+  .settings-popover,
+  .examples-popover {
+    left: 8px;
+    right: 8px;
+    top: auto;
+    bottom: calc(56px + env(safe-area-inset-bottom));
+    width: auto;
+    max-height: 70dvh;
+  }
+}
+
+/* ---------- touch: 44px targets, no zoom-on-focus ---------- */
+
+@media (pointer: coarse) {
+  .icon-btn { width: 44px; height: 44px; }
+  .tab-new { width: 48px; }
+  #editor { grid-template-rows: 44px auto 1fr auto; }
+  .panel-tab { min-height: 44px; padding-inline: 16px; }
+  .tab .tab-close { width: 32px; height: 32px; }
+  .lesson-btn { min-height: 44px; min-width: 44px; }
+  /* iOS zooms into any focused field under 16px. */
+  .account-input,
+  .settings-row input[type="number"] { font-size: 16px; }
+}
+
+/* ---------- keyboard shortcuts (settings) ---------- */
+
+.shortcut-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  margin: 4px 0 0;
+  padding: 0 14px;
+  font-size: 12px;
+  color: rgb(var(--text-secondary));
+}
+/* Keys keep their size when a description wraps; each row lines up at the top. */
+.shortcut-list { align-items: start; }
+.shortcut-list dt { display: flex; align-items: center; gap: 3px; }
+.shortcut-list dd { margin: 0; line-height: 20px; }
+.shortcut-list kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 20px;
+  min-width: 20px;
+  padding: 0 5px;
+  font-family: var(--font-mono);
+  font-variation-settings: "MONO" 1, "CASL" 1;
+  font-size: 11px;
+  line-height: 1;
+  border: 1px solid rgb(var(--border));
+  border-radius: 4px;
+  color: rgb(var(--text-primary));
+}
+
+/* ---------- sidebar names ---------- */
+
+/* The rail is icon-only; its names show beside each icon on hover or keyboard focus. */
+#sidebar { position: relative; z-index: 6; }
+@media (min-width: 768px) {
+  #sidebar .icon-btn { position: relative; }
+  #sidebar .icon-btn::after {
+    content: attr(data-label);
+    position: absolute;
+    left: calc(100% + 8px);
+    top: 50%;
+    transform: translateY(-50%);
+    white-space: nowrap;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    background: rgb(var(--text-primary));
+    color: rgb(var(--bg));
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+  }
+  #sidebar .icon-btn:hover::after,
+  #sidebar .icon-btn:focus-visible::after { opacity: 1; }
+}
+/* Phones have no hover: the bottom bar carries a short name under each icon. */
+@media (max-width: 767px) {
+  #sidebar .icon-btn {
+    flex-direction: column;
+    gap: 3px;
+    width: auto;
+    min-width: 44px;
+    height: 52px;
+    padding: 0 4px;
+  }
+  #sidebar .icon-btn::after { content: attr(data-short); font-size: 11px; line-height: 1; }
+}
+
+/* On wide screens, centre messages over the editor column rather than the preview. */
+@media (min-width: 768px) {
+  .toast { left: calc(48px + (100vw - 48px) / 4); }
+}
+
+/* ---------- scratchpads: full-width editor, values in the code ---------- */
+
+main.no-results { grid-template-columns: minmax(0, 1fr); }
+main.no-results #splitter,
+main.no-results #results { display: none; }
+@media (max-width: 767px) {
+  main.no-results { grid-template-rows: minmax(0, 1fr); }
+}
+#btn-expand.in-tab-bar { position: static; align-self: center; margin-right: 4px; }
+
+.cm-value-toggle {
+  pointer-events: auto;
+  background: transparent;
+  border: 1px solid rgb(var(--border));
+  border-radius: 4px;
+  color: rgb(var(--text-secondary));
+  font: inherit;
+  font-style: normal;
+  font-size: 0.85em;
+  padding: 0 6px;
+  cursor: pointer;
+}
+.cm-value-toggle:hover { color: rgb(var(--text-primary)); border-color: rgb(var(--text-muted)); }
+.cm-full-value {
+  margin: 2px 0 6px 2ch;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: rgb(var(--bg-secondary));
+  color: rgb(var(--text-secondary));
+  font: inherit;
+  white-space: pre-wrap;
+}
+
+/* ---------- first visit: empty editor ---------- */
+
+.cm-placeholder { color: rgb(var(--text-muted)); font-style: italic; }
+
+/* Classroom theme: values in teal, upright, as in the lessons. */
+[data-theme-id="classroom"] .cm-inline-value:not(.cm-inline-error) { color: rgb(var(--success)); font-style: normal; }

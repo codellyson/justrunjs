@@ -1,5 +1,5 @@
 // Rasterizes the source SVGs in public/ into all the PNG variants the
-// marketing site, web editor, and Tauri bundle need. Run via `pnpm assets`.
+// marketing site and web editor need. Run via `pnpm assets`.
 //
 // Edit the SVG sources by hand, then re-run this script — no need to ever
 // hand-edit the generated PNGs.
@@ -11,10 +11,8 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(here, "../public");
-const iconsDir = path.resolve(here, "../../icons");
 
 await fs.mkdir(publicDir, { recursive: true });
-await fs.mkdir(iconsDir, { recursive: true });
 
 const logoSvg = await fs.readFile(path.join(publicDir, "logo.svg"));
 const ogSvg = await fs.readFile(path.join(publicDir, "og-image.svg"));
@@ -29,11 +27,6 @@ async function pngFromSvg(svg, size, outPath) {
     .png({ compressionLevel: 9 })
     .toFile(outPath);
 }
-
-// --- Tauri source icon ---------------------------------------------------
-// cargo tauri icon will fan this out into icon.icns / icon.ico / multi-size
-// PNGs for every platform target.
-await pngFromSvg(logoSvg, 1024, path.join(iconsDir, "icon.png"));
 
 // --- Favicons -----------------------------------------------------------
 // Modern browsers prefer the SVG (already in public/); these are HiDPI
@@ -55,7 +48,6 @@ await sharp(ogSvg, { density: 300 })
   .toFile(path.join(publicDir, "og-image.png"));
 
 const generated = [
-  `icons/icon.png (1024x1024)`,
   `public/favicon-{16,32,48}.png`,
   `public/apple-touch-icon.png (180x180)`,
   `public/og-image.png (1200x630)`,

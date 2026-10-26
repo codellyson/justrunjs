@@ -1,19 +1,13 @@
-# Deploys the marketing site + browser editor to Cloudflare Pages.
+# Deploys the site, browser editor and API as one Cloudflare Worker (static assets + worker/index.ts).
 #
-# - Pushes to `master` -> production deploy (justrunjs.pages.dev + custom domain)
-# - Pushes to any other branch / PRs -> preview deploy on a unique URL
+# - Pushes to `master` -> apply D1 migrations, then production deploy
+# - PRs -> build, typecheck and test only (previews would share the production database)
 #
 # Required repo secrets (Settings -> Secrets and variables -> Actions):
-#   CLOUDFLARE_API_TOKEN  — token with `Cloudflare Pages: Edit` permission
-#                           (create at https://dash.cloudflare.com/profile/api-tokens)
+#   CLOUDFLARE_API_TOKEN  — token with Workers Scripts: Edit and D1: Edit
 #   CLOUDFLARE_ACCOUNT_ID — your CF account ID
-#                           (https://dash.cloudflare.com -> right sidebar)
 #
-# The CF Pages project itself ("justrunjs") needs to exist before the first
-# run. Either create it once via the Pages dashboard ("Direct upload" mode,
-# no Git connection — this workflow does the deploying), or `wrangler pages
-# project create justrunjs` locally. After that, this action handles every
-# subsequent deploy.
+# One-time setup (D1 database, email sender, custom domain) is in DEPLOYMENT.md.
 
 name: deploy-marketing
 
@@ -30,8 +24,6 @@ on:
 
 permissions:
   contents: read
-  deployments: write  # CF pages-action writes deployment status to commits
-  pull-requests: write  # leave a preview-URL comment on PRs
 
 jobs:
   deploy:
@@ -55,12 +47,22 @@ jobs:
       - name: Build Astro
         run: pnpm --filter runjs-rs-marketing build
 
-      - name: Install wrangler globally
-        run: npm install -g wrangler@latest
+      - name: Typecheck worker + test
+        working-directory: marketing
+        run: npx tsc -p worker && pnpm test && pnpm test:api
 
-      - name: Deploy to Cloudflare Pages
+      - name: Apply D1 migrations
+        if: github.event_name != 'pull_request'
         working-directory: marketing
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: wrangler pages deploy dist --project-name=justrunjs --branch=${{ github.head_ref || github.ref_name }}
+        run: npx wrangler d1 migrations apply justrunjs --remote
+
+      - name: Deploy worker
+        if: github.event_name != 'pull_request'
+        working-directory: marketing
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy

@@ -1,0 +1,6 @@
+{
+  "title": "[Course name]",
+  "intro": "[One or two sentences, in your words, on what students will be able to do by the end.]",
+  "teacher": { "name": "Lukman", "photo": null },
+  "lessons": ["greeting-card", "array-basics"]
+}

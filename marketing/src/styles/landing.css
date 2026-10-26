@@ -1,0 +1,171 @@
+/* The landing page. Colours come from the theme tokens (Classroom by default): accent is the
+ * teacher's apricot, success the student's teal. Sizes in px: the site's root font size is 13px. */
+
+.ld {
+  --ld-max: 1200px;
+  --ld-gutter: 40px;
+  min-height: 100vh;
+  background: rgb(var(--bg));
+  color: rgb(var(--text-primary));
+  font-size: 16px;
+}
+.ld a { color: inherit; }
+.ld p, .ld li { text-wrap: pretty; }
+.ld :focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 3px; border-radius: 6px; }
+.ld ::selection { background: rgb(var(--accent) / 0.35); }
+
+.ld-top,
+.ld-hero,
+.ld-pad,
+.ld-lessons-in,
+.ld-foot {
+  max-width: var(--ld-max);
+  margin: 0 auto;
+  box-sizing: border-box;
+  padding-left: max(var(--ld-gutter), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--ld-gutter), env(safe-area-inset-right, 0px));
+}
+
+/* ---------- top ---------- */
+
+.ld-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding-block: 18px; }
+.ld-brand { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; text-decoration: none; font-variation-settings: "CASL" 1, "MONO" 0; }
+.ld-nav { display: flex; flex-wrap: wrap; gap: 4px; }
+.ld-nav a, .ld-foot nav a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  color: rgb(var(--text-secondary));
+  text-decoration: none;
+  font-size: 15px;
+}
+.ld-nav a:hover, .ld-foot nav a:hover { color: rgb(var(--text-primary)); }
+
+/* ---------- hero: the pitch, then a real lesson playing ---------- */
+
+.ld-hero { display: flex; flex-direction: column; align-items: center; gap: 48px; padding-block: 64px 104px; }
+.ld-hero-text { max-width: 820px; display: flex; flex-direction: column; align-items: center; gap: 22px; text-align: center; }
+.ld-hero h1 {
+  margin: 0;
+  font-size: 68px;
+  line-height: 1.02;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+  font-variation-settings: "CASL" 0.7, "MONO" 0;
+}
+.ld-lede { margin: 0; max-width: 52ch; font-size: 20px; line-height: 1.55; color: rgb(var(--text-secondary)); }
+.ld-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 22px; margin-top: 6px; }
+.ld-btn {
+  min-height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24px;
+  border-radius: 999px;
+  background: rgb(var(--accent));
+  color: rgb(var(--accent-text)) !important;
+  text-decoration: none;
+  font-size: 17px;
+  font-weight: 700;
+}
+.ld-btn:hover { background: rgb(var(--accent-hover)); }
+.ld-learn {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: rgb(var(--success)) !important;
+  text-decoration: none;
+  font-size: 16px;
+  font-weight: 600;
+}
+.ld-learn:hover { text-decoration: underline; text-underline-offset: 4px; }
+.ld-note { margin: 0; font-size: 14px; color: rgb(var(--text-muted)); }
+
+.ld-demo { width: 100%; max-width: 1080px; margin: 0; display: flex; flex-direction: column; gap: 12px; }
+.ld-demo iframe {
+  display: block;
+  width: 100%;
+  height: 520px;
+  border: 0;
+  border-radius: 22px;
+  background: rgb(var(--bg));
+  box-shadow: 0 50px 100px -40px rgb(0 0 0 / 0.85);
+}
+.ld-demo figcaption { font-size: 14px; color: rgb(var(--text-muted)); text-align: center; }
+
+/* ---------- scratchpad ---------- */
+
+.ld-pad { padding-block: 96px 104px; }
+.ld-pad-go { margin-top: 28px; }
+.ld-quiet {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 20px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgb(var(--border));
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 600;
+}
+.ld-quiet:hover { box-shadow: inset 0 0 0 1px rgb(var(--text-muted)); }
+.ld h2 { margin: 0 0 10px; font-size: 34px; line-height: 1.15; font-weight: 700; letter-spacing: -0.015em; text-wrap: balance; font-variation-settings: "CASL" 0.7, "MONO" 0; }
+.ld-sub { margin: 0 0 32px; max-width: 60ch; font-size: 17px; line-height: 1.55; color: rgb(var(--text-secondary)); }
+.ld-shot { display: block; width: 100%; height: auto; border-radius: 16px; box-shadow: 0 0 0 1px rgb(var(--border)); }
+.ld-points { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin-top: 24px; }
+.ld-points p { margin: 0; font-size: 15px; line-height: 1.5; color: rgb(var(--text-secondary)); }
+.ld-points strong, .ld-steps strong { color: rgb(var(--text-primary)); }
+.ld code { font-family: var(--font-mono); font-variation-settings: "MONO" 1, "CASL" 1; color: rgb(var(--text-primary)); }
+
+/* ---------- lessons ---------- */
+
+.ld-lessons { background: rgb(var(--bg-secondary) / 0.55); }
+.ld-lessons-in { display: flex; flex-wrap: wrap; align-items: center; gap: 56px; padding-block: 88px; }
+.ld-lessons-text { flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 18px; }
+.ld-lessons .ld-sub { margin: 0; }
+.ld-lessons h2 { font-size: 40px; line-height: 1.1; letter-spacing: -0.02em; margin: 0; }
+.ld-by { margin: 0; font-size: 15px; color: rgb(var(--text-muted)); }
+.ld-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; font-size: 16px; line-height: 1.5; color: rgb(var(--text-secondary)); }
+.ld-steps .ld-watch { color: rgb(var(--accent)); }
+.ld-steps .ld-try { color: rgb(var(--success)); }
+.ld-lessons .ld-actions { justify-content: flex-start; }
+.ld-btn-student { background: rgb(var(--success)); color: rgb(var(--bg)) !important; }
+.ld-btn-student:hover { background: rgb(var(--success) / 0.85); }
+.ld-lessons-in > .ld-shot-wrap { flex: 1 1 440px; min-width: 0; }
+.ld-turn { box-shadow: none; border-radius: 18px; }
+
+/* ---------- footer ---------- */
+
+.ld-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding-block: 36px 48px; font-size: 14px; color: rgb(var(--text-muted)); }
+.ld-foot strong { color: rgb(var(--text-primary)); font-variation-settings: "CASL" 1; }
+.ld-foot nav { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* ---------- phones ---------- */
+
+@media (max-width: 700px) {
+  .ld { --ld-gutter: 20px; }
+  .ld-top { padding-block: 6px; }
+  .ld-nav a { padding: 0 10px; font-size: 14px; }
+  .ld-hero { gap: 28px; padding-block: 28px 56px; align-items: stretch; }
+  .ld-hero-text { align-items: stretch; text-align: left; gap: 18px; }
+  .ld-hero h1 { font-size: 40px; line-height: 1.06; }
+  .ld-lede { font-size: 17px; }
+  .ld-actions { flex-direction: column; align-items: stretch; gap: 8px; }
+  .ld-btn { width: 100%; box-sizing: border-box; min-height: 54px; }
+  .ld-learn { justify-content: center; }
+  .ld-note { text-align: center; }
+  .ld-demo iframe { height: 460px; border-radius: 16px; }
+  .ld-pad { padding-block: 56px 64px; }
+  .ld-quiet { justify-content: center; }
+  .ld h2 { font-size: 28px; }
+  .ld-points { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .ld-lessons-in { gap: 28px; padding-block: 52px 56px; }
+  .ld-lessons h2 { font-size: 32px; }
+  /* Screenshots stay readable on a phone: full size in a box that scrolls sideways. */
+  .ld-shot-wrap { overflow-x: auto; margin-right: calc(-1 * var(--ld-gutter)); padding-right: var(--ld-gutter); scrollbar-width: thin; }
+  .ld-shot { width: 640px; max-width: none; border-radius: 12px; }
+  .ld-foot { flex-direction: column; align-items: flex-start; padding-block: 28px 40px; }
+}

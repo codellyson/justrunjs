@@ -1,223 +1,123 @@
 ---
+// The landing page: crow is a place to learn to code first (the lessons), and a scratchpad to
+// keep practising in second. A real lesson playing is the proof. Every picture of crow here is crow itself: the hero is the lesson page
+// in its demo mode, and the screenshots are captured from the running app.
 import Layout from '../layouts/Layout.astro';
-import Button from '@codellyson/justui/astro/Button.astro';
-import ThemeToggle from '@codellyson/justui/astro/ThemeToggle.astro';
-import EditorEmbed from '../components/EditorEmbed.astro';
+import '../styles/landing.css';
+import course from '../learn/course.json';
 
-// In-browser scratchpad lives at /app (built later — link works today,
-// page is added in the web/ workspace).
-const launchUrl = '/web/index.html';
-const downloadUrl = 'https://github.com/codellyson/justrunjs/releases';
 const repoUrl = 'https://github.com/codellyson/justrunjs';
-
-const FAQ = [
-  {
-    q: 'What is this, exactly?',
-    a: 'A scratchpad. You write TypeScript or JavaScript at the top, and every top-level expression renders its value on the same line. Like a REPL, but you can edit history.',
-  },
-  {
-    q: 'TypeScript without a tsconfig?',
-    a: 'Yes. Types are stripped via SWC before the code runs in V8. There is no project, no tsconfig, no install step. Per-tab TS/JS switching.',
-  },
-  {
-    q: 'Can I import packages?',
-    a: 'Use the npm: prefix — e.g. import _ from "npm:lodash@4". Packages are fetched as ESM from esm.sh and cached for the session.',
-  },
-  {
-    q: 'Does it work offline?',
-    a: 'The native desktop build runs entirely on your machine; the V8 isolate is bundled. npm: and https: imports need a network. The browser build needs a network for the page itself.',
-  },
-  {
-    q: 'Is it free?',
-    a: 'Yes. Open source on GitHub.',
-  },
-];
-
-// A small, static taste of what the editor does. Source on the left, value on
-// the right, same line. Mono throughout. The real editor lives at /app.
-const demo: Array<{ code: string; value?: string }> = [
-  { code: 'const greeting = "hello";', value: "'hello'" },
-  { code: 'greeting.toUpperCase();', value: "'HELLO'" },
-  { code: '' },
-  { code: 'const m = new Map<string, { name: string }>();' },
-  { code: 'm.set("u1", { name: "Ada" });', value: "Map(1) { 'u1' => { name: 'Ada' } }" },
-  { code: 'm;', value: "Map(1) { 'u1' => { name: 'Ada' } }" },
-  { code: '' },
-  { code: 'import _ from "npm:lodash@4";' },
-  { code: '_.chunk([1, 2, 3, 4, 5], 2);', value: '[ [ 1, 2 ], [ 3, 4 ], [ 5 ] ]' },
-  { code: '' },
-  { code: 'const total = await Promise.resolve(40 + 2);', value: '42' },
-  { code: 'total;', value: '42' },
-];
+const firstLesson = course.lessons[0];
+const demoLesson = 'array-basics';
+const lessonCount = course.lessons.length;
 
 const softwareJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'SoftwareApplication',
-  name: 'justrunjs',
+  name: 'crow',
   description:
-    'A JavaScript scratchpad with inline values. Write TypeScript or JavaScript and see every top-level expression render its value on the same line. Native desktop, in the browser, or both.',
-  applicationCategory: 'DeveloperApplication',
-  operatingSystem: 'macOS, Windows, Linux, Web',
+    'Learn to code in a live editor: narrated lessons where the code types itself in, each value shows up beside its line, and you can take over the code at any moment. Plus a TypeScript and JavaScript scratchpad to keep practising.',
+  applicationCategory: 'EducationalApplication',
+  operatingSystem: 'Web',
   offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
-  url: Astro.site?.toString() ?? 'https://runjs-rs.pages.dev',
-  downloadUrl,
-};
-
-const faqJsonLd = {
-  '@context': 'https://schema.org',
-  '@type': 'FAQPage',
-  mainEntity: FAQ.map(({ q, a }) => ({
-    '@type': 'Question',
-    name: q,
-    acceptedAnswer: { '@type': 'Answer', text: a },
-  })),
+  url: Astro.site?.toString(),
 };
 ---
 
-<Layout jsonLd={[softwareJsonLd, faqJsonLd]}>
-  <!--
-    If the marketing landing somehow loads inside the Tauri desktop window
-    (e.g. tauri.conf.json's `url` field didn't navigate where we expected),
-    immediately redirect to the editor route. Browsers never see this firing
-    because window.__TAURI__ is only present in the Tauri webview.
-  -->
-  <script is:inline>
-    if (typeof window !== "undefined" && window.__TAURI__) {
-      window.location.replace("/web/index.html");
-    }
-  </script>
-  <ThemeToggle />
-  <div class="min-h-screen bg-bg">
-    <main class="container mx-auto px-6 sm:px-8 py-16 sm:py-24">
-      <div class="max-w-2xl mx-auto">
+<Layout jsonLd={softwareJsonLd}>
+  <div class="ld">
+    <header class="ld-top">
+      <a class="ld-brand" href="/">crow</a>
+      <nav class="ld-nav" aria-label="Main">
+        <a href="/learn/">Lessons</a>
+        <a href="/web/">Scratchpad</a>
+        <a href={repoUrl}>GitHub</a>
+      </nav>
+    </header>
 
-        <header class="mb-16">
-          <p class="font-mono text-xs text-muted mb-4">v0.1 · open source · Rust + V8</p>
-          <h1 class="text-5xl sm:text-6xl font-semibold tracking-tight text-primary mb-4">
-            justrunjs
-          </h1>
-          <p class="text-xl sm:text-2xl text-primary font-medium mb-6">
-            A scratchpad with inline values.
-          </p>
-          <p class="text-base text-secondary leading-relaxed max-w-xl">
-            Write TypeScript or JavaScript. Every top-level expression renders
-            its value next to the source line, the moment you stop typing.
-            Native desktop, in the browser, or both.
-          </p>
-
-          <div class="flex flex-wrap items-center gap-3 mt-8">
-            <Button variant="primary" href="#playground" data-action="open-editor">
-              Open in browser
-            </Button>
-            <Button variant="secondary" href={downloadUrl} external>
-              Download for desktop
-            </Button>
+    <main>
+      <section class="ld-hero" aria-labelledby="ld-hero-h">
+        <div class="ld-hero-text">
+          <h1 id="ld-hero-h">Learn to code in a live editor.</h1>
+          <p class="ld-lede">Each lesson is me typing and talking you through the code. Every value shows up beside its line, and you can take over the code at any moment.</p>
+          <div class="ld-actions">
+            <a class="ld-btn" href="/learn/">Start the course</a>
+            <a class="ld-learn" href="/web/">
+              Or just try some code in the scratchpad
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg>
+            </a>
           </div>
-        </header>
+          <p class="ld-note">Free, and no account needed. {lessonCount} {lessonCount === 1 ? 'lesson' : 'lessons'} so far.</p>
+        </div>
+        <figure class="ld-demo">
+          <iframe
+            src={`/learn/${demoLesson}?demo`}
+            title="A crow lesson playing with the sound off: code types in and each value appears beside its line. Click to open the lesson."
+            tabindex="-1"
+          ></iframe>
+          <figcaption>A real lesson, playing with the sound off. Click it to watch with sound.</figcaption>
+        </figure>
+      </section>
 
-      </div>
 
-      <!-- Embedded editor — escapes the max-w-2xl wrapper so it can stretch
-           to its own 1200px width. `?embed=1` flag hides /web/'s home button
-           and surfaces the expand-to-fullscreen toggle. -->
-      <EditorEmbed />
-
-      <div class="max-w-2xl mx-auto">
-
-        <!-- Inline-values demo -->
-        <section aria-labelledby="demo" class="hidden">
-          <h2 id="demo" class="sr-only">What it looks like</h2>
-          <div class="rounded-md border border-border bg-bg-secondary overflow-hidden">
-            <div class="flex items-center justify-between px-4 py-2 border-b border-border">
-              <span class="font-mono text-xs text-muted">untitled.ts</span>
-              <span class="font-mono text-xs text-muted">6 results · 18ms</span>
-            </div>
-            <div class="grid grid-cols-[1fr_auto] font-mono text-xs leading-6">
-              {demo.map((row) => (
-                <>
-                  <div class="px-4 py-0.5 text-primary whitespace-pre">
-                    {row.code || ' '}
-                  </div>
-                  <div class="px-4 py-0.5 text-muted whitespace-pre text-right">
-                    {row.value ?? ''}
-                  </div>
-                </>
-              ))}
+      <section class="ld-lessons" aria-labelledby="ld-lessons-h">
+        <div class="ld-lessons-in">
+          <div class="ld-lessons-text">
+            <p class="ld-by">Lessons by {course.teacher.name}</p>
+            <h2 id="ld-lessons-h">Take over the code at any moment.</h2>
+            <p class="ld-sub">A lesson isn't a video of an editor. It is the editor: pause anywhere, change my code, run it, and pick the lesson back up where I paused.</p>
+            <ul class="ld-steps">
+              <li><strong class="ld-watch">Watch.</strong> I talk you through the code as I write it.</li>
+              <li><strong class="ld-try">Try it.</strong> Click the code to get your own copy to change and run.</li>
+              <li><strong>Come back.</strong> Pick the lesson up where I paused. Your copy stays saved.</li>
+            </ul>
+            <div class="ld-actions">
+              <a class="ld-btn ld-btn-student" href={`/learn/${firstLesson}`}>Start lesson 1</a>
+              <a class="ld-quiet" href="/learn/">See every lesson</a>
             </div>
           </div>
-        </section>
+          <div class="ld-shot-wrap">
+            <img
+              class="ld-shot ld-turn"
+              src="/landing/your-turn.webp"
+              width="2208"
+              height="928"
+              loading="lazy"
+              alt="A student's own copy of a lesson in crow: their new line is underlined in teal with its value, beside Continue the lesson and Reset to my code"
+            />
+          </div>
+        </div>
+      </section>
 
-        <section aria-labelledby="how-it-works" class="mb-16">
-          <h2 id="how-it-works" class="text-xl font-semibold text-primary mb-6">
-            How it works
-          </h2>
-          <ol class="space-y-4 text-secondary">
-            <li class="flex gap-4">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-accent/10 text-accent text-xs font-semibold flex items-center justify-center">
-                1
-              </span>
-              <p>
-                <strong class="text-primary">Type.</strong>
-                TypeScript or JavaScript. Per-tab language switching, no
-                tsconfig.
-              </p>
-            </li>
-            <li class="flex gap-4">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-accent/10 text-accent text-xs font-semibold flex items-center justify-center">
-                2
-              </span>
-              <p>
-                <strong class="text-primary">See values inline.</strong>
-                Every top-level expression renders next to its source line.
-                Maps, Sets, Symbols, class instances — formatted, not
-                JSON-stringified.
-              </p>
-            </li>
-            <li class="flex gap-4">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-accent/10 text-accent text-xs font-semibold flex items-center justify-center">
-                3
-              </span>
-              <p>
-                <strong class="text-primary">Reach for packages.</strong>
-                <code class="font-mono text-xs text-primary px-1 py-0.5 rounded bg-bg-secondary">npm:lodash@4</code>
-                and <code class="font-mono text-xs text-primary px-1 py-0.5 rounded bg-bg-secondary">https://</code>
-                imports just work. Top-level await is supported.
-              </p>
-            </li>
-          </ol>
-        </section>
-
-        <section aria-labelledby="faq" class="mb-16">
-          <h2 id="faq" class="text-xl font-semibold text-primary mb-6">
-            Frequently asked questions
-          </h2>
-          <dl class="space-y-6">
-            {FAQ.map(({ q, a }) => (
-              <div>
-                <dt class="text-base font-medium text-primary mb-1.5">{q}</dt>
-                <dd class="text-sm text-secondary leading-relaxed">{a}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-
-        <footer class="pt-8 border-t border-border">
-          <p class="text-xs text-muted/70 flex flex-wrap items-center gap-3">
-            <a href={repoUrl} class="hover:text-primary transition-colors" target="_blank" rel="noopener noreferrer">
-              GitHub
-            </a>
-            <span class="opacity-50">·</span>
-            <a href={downloadUrl} class="hover:text-primary transition-colors" target="_blank" rel="noopener noreferrer">
-              Releases
-            </a>
-            <span class="opacity-50">·</span>
-            <a href={`${repoUrl}/blob/master/DESIGN.md`} class="hover:text-primary transition-colors" target="_blank" rel="noopener noreferrer">
-              Design notes
-            </a>
-          </p>
-        </footer>
-
-      </div>
+      <section class="ld-pad" aria-labelledby="ld-pad-h">
+        <h2 id="ld-pad-h">Keep practising in the scratchpad.</h2>
+        <p class="ld-sub">Between lessons, or whenever you want to try an idea: TypeScript or JavaScript, nothing to install, and each line's value shows up right beside it.</p>
+        <div class="ld-shot-wrap">
+          <img
+            class="ld-shot"
+            src="/landing/scratchpad.webp"
+            width="2104"
+            height="940"
+            loading="lazy"
+            alt="The crow scratchpad running TypeScript, an npm package and an array map, each value beside its line, and an unclosed bracket explained on its own line"
+          />
+        </div>
+        <div class="ld-points">
+          <p><strong>TypeScript with no setup.</strong> No project, no tsconfig. Switch any tab between TS and JS.</p>
+          <p><strong>Any npm package.</strong> Add <code>npm:</code> to an import and it loads in the browser.</p>
+          <p><strong>Errors in plain words.</strong> On the line that caused them, and the lines above keep their values.</p>
+        </div>
+        <a class="ld-quiet ld-pad-go" href="/web/">Open the scratchpad</a>
+      </section>
     </main>
+
+    <footer class="ld-foot">
+      <span><strong>crow</strong> · open source, runs in your browser</span>
+      <nav aria-label="Footer">
+        <a href="/learn/">Lessons</a>
+        <a href="/web/">Scratchpad</a>
+        <a href={repoUrl}>GitHub</a>
+      </nav>
+    </footer>
   </div>
 </Layout>

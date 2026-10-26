@@ -1,0 +1,646 @@
+/* The classroom: a warm dark stage, the instructor in apricot, values (and later the student)
+ * in teal. Fixed on purpose; lessons don't follow the scratchpad's themes. */
+:root {
+  --ground: #1a1512;
+  --card: #221c18;
+  --raise: #2e2620;
+  --line: #3a312a;
+  --ink: #f3eadf;
+  --ink-2: #d6cbbd;
+  --muted: #b3a596;
+  --gutter: #978879;
+  --teacher: #f0a35e;
+  --student: #7fcbb5;
+  --error: #f2a7a0;
+  --sans: "Recursive Variable", ui-sans-serif, system-ui, sans-serif;
+  color-scheme: dark;
+}
+
+html,
+body.learn {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-variation-settings: "CASL" 0.6, "MONO" 0;
+}
+
+.learn a { color: inherit; }
+.learn :focus-visible { outline: 2px solid var(--teacher); outline-offset: 3px; }
+.learn ::selection { background: rgb(240 163 94 / 0.35); }
+
+/* Exactly one screen: the middle scrolls, so the player never leaves the bottom. */
+.lp {
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+/* ---------- top ---------- */
+
+.lp-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 32px;
+}
+.lp-where { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 15px; color: var(--muted); }
+.lp-back { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; text-decoration: none; color: var(--muted); }
+.lp-back:hover { color: var(--ink); }
+.lp-title { color: var(--ink); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lp-progress { display: flex; align-items: center; gap: 12px; flex: none; font-size: 14px; color: var(--muted); }
+.lp-count-short { display: none; }
+.lp-dots { display: flex; gap: 6px; }
+.lp-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+.lp-dot.here { background: transparent; box-shadow: inset 0 0 0 2px var(--teacher); }
+.lp-dot.done { background: var(--student); box-shadow: none; }
+
+/* ---------- stage ---------- */
+
+.lp-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  padding: 8px 32px 32px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.lp-card {
+  position: relative;
+  width: 100%;
+  max-width: 1080px;
+  flex: 1;
+  min-height: 280px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border-radius: 18px;
+  box-shadow: 0 30px 60px -30px rgb(0 0 0 / 0.7);
+  overflow: hidden;
+}
+
+/* Above the code: which file, whose code it is, and how to take over. */
+.lp-cardhead { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; padding: 14px 18px 0; min-height: 44px; }
+.lp-files { display: flex; gap: 4px; }
+.lp-files[hidden] { display: none; }
+.lp-files button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.lp-files button.on { background: var(--raise); color: var(--ink); }
+.lp-files button:not(:disabled) { cursor: pointer; }
+.lp-files button:not(:disabled):hover { color: var(--ink); }
+
+.lp-try {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--raise);
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.lp-try:hover { color: var(--ink); }
+.lp-try:disabled { visibility: hidden; }
+.lp-try-short { display: none; }
+.lp-mine-chip {
+  display: none;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--student);
+  color: #14201c;
+  font-size: 13px;
+  font-weight: 700;
+}
+.lp-end-chip {
+  display: none;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--raise);
+  color: #f0c08f;
+  font-size: 13px;
+  font-weight: 600;
+}
+.is-ended .lp-end-chip { display: inline-flex; }
+.is-ended .lp-try { visibility: hidden; }
+.lp-saved { display: none; margin-left: auto; font-size: 13px; color: var(--muted); }
+
+.is-yours .lp-card { background: #1f2321; box-shadow: 0 0 0 2px var(--student), 0 30px 60px -30px rgb(0 0 0 / 0.7); }
+.is-yours .lp-mine-chip { display: inline-flex; }
+.is-yours .lp-try { display: none; }
+.is-yours .lp-saved { display: inline; }
+.is-yours .lp-editor .cm-content { caret-color: var(--student); }
+/* The teal frame already says the code has focus. */
+.lp-editor .cm-editor.cm-focused, .lp-editor .cm-content:focus-visible { outline: none; }
+.lp-editor .lp-mine { text-decoration: underline wavy var(--student); text-underline-offset: 5px; text-decoration-thickness: 1.5px; }
+
+.lp-editor { flex: 1; min-height: 0; display: flex; }
+.lp-editor .cm-editor { flex: 1; min-width: 0; height: 100%; }
+.lp-editor .cm-scroller {
+  font-family: var(--sans);
+  font-variation-settings: "CASL" 1, "MONO" 1;
+  font-size: 20px;
+  line-height: 1.65;
+  padding: 14px 0 32px;
+}
+.lp-editor .cm-content { color: var(--ink); }
+.lp-editor .cm-gutters { background: transparent; border: 0; color: var(--gutter); }
+.lp-editor .cm-lineNumbers .cm-gutterElement { padding: 0 14px 0 24px; }
+.lp-editor .cm-line { padding: 0 24px 0 8px; }
+.lp-editor .lp-typing { background: rgb(240 163 94 / 0.09); }
+.lp-caret {
+  display: inline-block;
+  width: 3px;
+  height: 1.1em;
+  margin-left: 1px;
+  vertical-align: -0.18em;
+  border-radius: 2px;
+  background: var(--teacher);
+}
+
+.lp-editor .cm-inline-value { color: var(--student); font-variation-settings: "CASL" 0.6, "MONO" 1; }
+.lp-editor .cm-inline-error { color: var(--error); }
+.lp-editor .cm-error-line { background: rgb(242 167 160 / 0.08); }
+.lp-editor .cm-value-toggle {
+  font: inherit;
+  font-size: 0.75em;
+  color: var(--ink-2);
+  background: var(--raise);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 6px;
+  cursor: pointer;
+}
+.lp-editor .cm-full-value {
+  margin: 4px 0 8px 2ch;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--raise);
+  color: var(--student);
+  font: inherit;
+  font-size: 0.85em;
+  white-space: pre-wrap;
+}
+
+/* The lesson's page floats over the code like a small browser window. */
+.lp-preview {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  width: min(40%, 420px);
+  height: min(55%, 320px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 18px 40px -12px rgb(0 0 0 / 0.6), 0 0 0 1px var(--line);
+}
+.lp-preview[hidden] { display: none; }
+.lp-preview-bar { display: flex; gap: 6px; padding: 8px 10px; background: var(--raise); }
+.lp-preview-bar span { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
+.lp-preview iframe { flex: 1; width: 100%; border: 0; background: #fff; }
+
+/* ---------- the teacher's voice ---------- */
+
+.lp-voice {
+  width: 100%;
+  max-width: 1080px;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  min-height: 84px;
+}
+.lp-teacher { display: grid; grid-template-columns: auto auto; grid-template-rows: auto auto; column-gap: 14px; row-gap: 6px; align-items: center; flex: none; }
+.lp-photo-wrap { position: relative; grid-row: 1 / 3; }
+.lp-photo {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--raise);
+  color: var(--ink);
+  font-size: 26px;
+  font-weight: 700;
+  box-shadow: 0 0 0 3px var(--ground), 0 0 0 6px var(--teacher);
+}
+.lp-photo img { width: 100%; height: 100%; object-fit: cover; }
+.lp-name { font-size: 15px; font-weight: 600; }
+.lp-bars { display: flex; align-items: end; gap: 3px; height: 16px; }
+.lp-bars span { width: 4px; height: 4px; border-radius: 2px; background: var(--teacher); opacity: 0.5; }
+.is-playing .lp-bars span { opacity: 1; animation: lp-speak 0.9s ease-in-out infinite; }
+.is-playing .lp-bars span:nth-child(2) { animation-delay: -0.3s; }
+.is-playing .lp-bars span:nth-child(3) { animation-delay: -0.6s; }
+.is-playing .lp-bars span:nth-child(4) { animation-delay: -0.15s; }
+@keyframes lp-speak { 0%, 100% { height: 5px; } 50% { height: 16px; } }
+@media (prefers-reduced-motion: reduce) {
+  .is-playing .lp-bars span { animation: none; height: 12px; }
+}
+
+.lp-caption {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.35;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+  font-variation-settings: "CASL" 0.8, "MONO" 0;
+}
+.no-captions .lp-caption { visibility: hidden; }
+
+/* Your turn: the teacher steps back, the student's copy is on screen. */
+.lp-badge {
+  display: none;
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  align-items: center;
+  justify-content: center;
+  background: var(--raise);
+  color: var(--ink);
+  box-shadow: 0 0 0 3px var(--ground);
+}
+.is-yours .lp-badge { display: flex; }
+.is-yours .lp-photo { box-shadow: 0 0 0 3px var(--ground), 0 0 0 6px var(--line); }
+.is-yours .lp-bars, .is-yours .lp-caption { display: none; }
+
+/* Finished: the teacher's closing words, the student's next move, and what's next. */
+.lp-end { display: none; flex: 1; min-width: 0; align-items: stretch; flex-wrap: wrap; gap: 18px 28px; }
+.is-ended .lp-end { display: flex; }
+.is-ended .lp-caption, .is-ended .lp-bars { display: none; }
+.lp-end .lp-yt-actions { margin-top: 14px; }
+.lp-btn.lp-btn-student { border: 0; background: var(--student); color: #14201c; font-weight: 700; font-size: 16px; }
+.lp-btn.lp-btn-student:hover { background: #95d7c4; }
+.is-ended .lp-caret { display: none; }
+.is-ended .lp-editor .lp-typing { background: none; }
+.lp-next {
+  flex: 0 1 320px;
+  min-width: 240px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--line);
+  text-decoration: none;
+}
+.lp-next:hover { box-shadow: inset 0 0 0 1px var(--muted); }
+.lp-next-label { font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.lp-next-title { font-size: 21px; line-height: 1.3; font-weight: 600; font-variation-settings: "CASL" 0.8, "MONO" 0; }
+.lp-next-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; color: var(--muted); }
+.lp-next-go { width: 44px; height: 44px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--teacher); color: var(--ground); }
+
+.lp-yourturn { display: none; flex: 1; min-width: 0; align-items: center; flex-wrap: wrap; gap: 14px 22px; }
+.is-yours .lp-yourturn { display: flex; }
+.lp-yt-words { flex: 1 1 360px; min-width: 0; }
+.lp-yt-title { margin: 0 0 4px; font-size: 28px; line-height: 1.25; font-weight: 600; font-variation-settings: "CASL" 0.8, "MONO" 0; }
+.lp-yt-text { margin: 0; font-size: 17px; line-height: 1.45; color: var(--muted); max-width: 60ch; }
+.lp-yt-actions { display: flex; flex-wrap: wrap; gap: 10px; flex: none; }
+.lp-btn {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 0 20px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+.lp-btn:hover { border-color: var(--muted); }
+.lp-btn-main { border: 0; background: var(--teacher); color: var(--ground); font-weight: 700; font-size: 16px; }
+.lp-btn-main:hover { background: #f4b47a; }
+
+/* ---------- player ---------- */
+
+/* The player lines up with the code card's edges instead of the window's, with room around it. */
+.lp-player {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 16px max(32px, calc((100% - 1080px) / 2)) calc(28px + env(safe-area-inset-bottom, 0px));
+}
+.lp-play {
+  width: 52px;
+  height: 52px;
+  flex: none;
+  border-radius: 50%;
+  border: 0;
+  background: var(--teacher);
+  color: var(--ground);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.lp-play:disabled { opacity: 0.5; cursor: default; }
+.lp-play .i-pause, .lp-play .i-replay, .is-playing .lp-play .i-play, .is-ended .lp-play .i-play { display: none; }
+.is-playing .lp-play .i-pause, .is-ended .lp-play .i-replay { display: block; }
+.is-ended .lp-play { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.is-yours .lp-play { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.is-yours .lp-seg span { background: #8a6a4c; }
+.lp-time { flex: none; font-size: 15px; color: var(--muted); font-variant-numeric: tabular-nums; font-variation-settings: "CASL" 1, "MONO" 1; }
+
+.lp-track { position: relative; flex: 1; min-width: 0; height: 44px; }
+.lp-segments { position: absolute; inset: 0; display: flex; gap: 4px; align-items: center; pointer-events: none; }
+.lp-seg { flex-basis: 0; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.lp-seg span { display: block; height: 100%; width: 0; background: var(--teacher); }
+.lp-track input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.lp-track:has(input:focus-visible) { outline: 2px solid var(--teacher); outline-offset: 2px; border-radius: 8px; }
+
+.lp-extras { display: flex; gap: 8px; flex: none; }
+.lp-chip {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.lp-chip[aria-pressed="true"] { background: var(--raise); }
+select.lp-chip { appearance: none; text-align: center; }
+select.lp-chip option { background: var(--card); }
+.lp-cc-short { display: none; }
+
+/* ---------- phones ---------- */
+
+@media (max-width: 700px) {
+  .lp-top { padding: 4px 8px; }
+  .lp-course, .lp-sep, .lp-count-long, .lp-dots { display: none; }
+  .lp-back { justify-content: center; min-width: 44px; }
+  .lp-where { flex: 1; }
+  .lp-title { font-size: 16px; }
+  .lp-count-short { display: inline; padding-right: 12px; font-size: 13px; }
+
+  .lp-stage { padding: 4px 12px 16px; gap: 16px; }
+  .lp-card { min-height: 240px; border-radius: 16px; }
+  .lp-editor .cm-scroller { font-size: 15px; padding: 16px 0 20px; }
+  .lp-editor .cm-lineNumbers .cm-gutterElement { padding: 0 8px 0 12px; }
+  .lp-editor .cm-line { padding: 0 14px 0 4px; }
+  /* No room beside the line: each value sits under it, like a margin note. */
+  .lp-editor .cm-inline-value { display: inline-block; width: 100%; box-sizing: border-box; padding: 0 0 4px 1.2em; font-size: 0.93em; }
+
+  .is-playground .lp-card { flex: none; height: auto; }
+  .is-playground .lp-editor { height: 34dvh; }
+  .lp-preview { position: static; width: auto; height: 26dvh; margin: 0 12px 12px; flex: none; }
+
+  .lp-voice { align-items: flex-start; gap: 14px; min-height: 0; padding: 0 8px; }
+  .lp-teacher { grid-template-columns: auto; justify-items: center; }
+  .lp-photo-wrap { grid-row: auto; }
+  .lp-try-long { display: none; }
+  .lp-try-short { display: inline; }
+  .lp-cardhead { padding: 10px 12px 0; }
+  .lp-yt-title { font-size: 22px; }
+  .lp-yt-text { font-size: 15px; }
+  .lp-yt-actions { width: 100%; }
+  .lp-next { flex-basis: 100%; min-width: 0; padding: 14px 16px; }
+  /* Finished: the next move matters more than the code, so the code steps back. */
+  .is-ended .lp-card { flex: none; min-height: 0; }
+  .is-ended .lp-editor { height: 24dvh; }
+  .is-ended .lp-preview { display: none; }
+  .lp-next-title { font-size: 18px; }
+  .lp-yt-actions .lp-btn { flex: 1 1 100%; }
+  .lp-photo { width: 48px; height: 48px; font-size: 20px; box-shadow: 0 0 0 3px var(--ground), 0 0 0 5px var(--teacher); }
+  .lp-name { display: none; }
+  .lp-caption { font-size: 21px; }
+
+  .lp-player {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    grid-template-areas: "track track track" "time play extras";
+    gap: 6px 10px;
+    padding: 10px 20px calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  .lp-track { grid-area: track; height: 32px; }
+  .lp-time { grid-area: time; font-size: 13px; }
+  .lp-play { grid-area: play; width: 60px; height: 60px; }
+  .lp-extras { grid-area: extras; justify-content: flex-end; gap: 6px; }
+  .lp-chip { padding: 0 10px; font-size: 13px; }
+  .lp-cc-long { display: none; }
+  .lp-cc-short { display: inline; font-weight: 700; }
+}
+
+/* ---------- course page ---------- */
+
+.cp-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 32px;
+}
+.cp-brand { min-height: 44px; display: inline-flex; align-items: center; text-decoration: none; color: var(--muted); font-variation-settings: "CASL" 1, "MONO" 1; font-size: 16px; }
+.cp-toplink { min-height: 44px; display: inline-flex; align-items: center; text-decoration: none; color: var(--muted); font-size: 14px; }
+.cp-brand:hover, .cp-toplink:hover { color: var(--ink); }
+
+.cp { max-width: 960px; margin: 0 auto; padding: 36px 32px 80px; display: flex; flex-direction: column; gap: 56px; }
+
+.cp-hero { display: flex; flex-wrap: wrap; gap: 36px; align-items: flex-start; }
+.cp-photo {
+  width: 132px;
+  height: 132px;
+  flex: none;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--raise);
+  font-size: 52px;
+  font-weight: 700;
+  box-shadow: 0 0 0 4px var(--ground), 0 0 0 8px var(--teacher);
+}
+.cp-photo img { width: 100%; height: 100%; object-fit: cover; }
+.cp-hero-text { flex: 1 1 480px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.cp-by { margin: 0; font-size: 15px; color: var(--muted); }
+.cp-hero h1 { margin: 0; font-size: 52px; line-height: 1.05; font-weight: 700; letter-spacing: -0.02em; text-wrap: balance; font-variation-settings: "CASL" 0.7, "MONO" 0; }
+.cp-intro { margin: 0; font-size: 19px; line-height: 1.55; color: var(--ink-2); max-width: 56ch; }
+.cp-go { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; margin-top: 10px; }
+.cp-cta {
+  min-height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 24px;
+  border-radius: 999px;
+  background: var(--teacher);
+  color: var(--ground);
+  text-decoration: none;
+  font-size: 17px;
+  font-weight: 700;
+}
+.cp-cta:hover { background: #f4b47a; }
+.cp-done-count { font-size: 15px; color: var(--muted); }
+
+.cp-lessons { display: flex; flex-direction: column; gap: 14px; }
+.cp h2 { margin: 0; font-size: 24px; font-weight: 700; font-variation-settings: "CASL" 0.7, "MONO" 0; }
+.cp-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.cp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; padding: 18px 20px; border-radius: 16px; }
+.cp-row.done { background: #1f1a16; }
+.cp-row.next { background: #2a221c; box-shadow: inset 0 0 0 2px var(--teacher); padding-block: 22px; }
+.cp-mark {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 0 2px var(--line);
+  color: var(--muted);
+  font-weight: 600;
+}
+.cp-tick { display: none; }
+.cp-row.done .cp-mark { background: var(--student); color: #14201c; box-shadow: none; }
+.cp-row.done .cp-num { display: none; }
+.cp-row.done .cp-tick { display: block; }
+.cp-row.next .cp-mark { box-shadow: inset 0 0 0 2px var(--teacher); color: var(--teacher); font-weight: 700; }
+.cp-row-text { flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cp-state { font-size: 13px; font-weight: 600; color: #f0c08f; }
+.cp-state:empty { display: none; }
+.cp-row-title { font-size: 19px; font-weight: 600; text-decoration: none; color: var(--ink-2); }
+.cp-row.done .cp-row-title, .cp-row.next .cp-row-title { color: var(--ink); }
+.cp-row.next .cp-row-title { font-size: 21px; font-weight: 700; }
+.cp-row-title:hover { text-decoration: underline; text-underline-offset: 4px; }
+.cp-row-meta { font-size: 14px; color: var(--muted); }
+.cp-copy, .cp-start {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  border-radius: 999px;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+}
+.cp-copy[hidden], .cp-start[hidden] { display: none; }
+.cp-copy { background: rgb(127 203 181 / 0.12); color: #9fdcc9; }
+.cp-copy:hover { background: rgb(127 203 181 / 0.2); }
+.cp-start { background: var(--teacher); color: var(--ground); font-size: 15px; font-weight: 700; padding: 0 20px; }
+.cp-start:hover { background: #f4b47a; }
+.cp-account { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 6px; }
+.cp-saved { margin: 0; font-size: 14px; color: var(--muted); }
+.cp-link {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+.cp-link[hidden], .cp-signin[hidden] { display: none; }
+.cp-signin { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 460px; }
+.cp-signin label { font-size: 14px; color: var(--ink-2); }
+.cp-field-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.cp-field-row input {
+  flex: 1 1 220px;
+  min-width: 0;
+  min-height: 46px;
+  box-sizing: border-box;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+}
+.cp-field-row input::placeholder { color: var(--gutter); }
+.cp-btn {
+  min-height: 46px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--student);
+  color: #14201c;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.cp-hint { margin: 0; font-size: 13px; color: var(--muted); }
+.cp-error { margin: 0; font-size: 14px; color: var(--error); }
+.cp-error:empty { display: none; }
+
+.cp-how { display: flex; flex-wrap: wrap; gap: 20px 28px; padding: 28px; border-radius: 18px; background: #1f1a16; }
+.cp-how h2 { flex: 1 1 100%; font-size: 20px; }
+.cp-how p { flex: 1 1 240px; min-width: 0; margin: 0; font-size: 16px; line-height: 1.55; color: var(--ink-2); }
+.cp-how strong { color: var(--ink); }
+.cp-how .cp-how-watch { color: var(--teacher); }
+.cp-how .cp-how-try { color: var(--student); }
+
+@media (max-width: 700px) {
+  .cp-top { padding: 4px 16px; }
+  .cp { padding: 16px 16px 48px; gap: 40px; }
+  .cp-hero { gap: 16px; }
+  .cp-photo { width: 76px; height: 76px; font-size: 30px; box-shadow: 0 0 0 3px var(--ground), 0 0 0 6px var(--teacher); }
+  .cp-hero h1 { font-size: 36px; }
+  .cp-intro { font-size: 17px; }
+  .cp-go { flex-direction: column; align-items: stretch; gap: 10px; }
+  .cp-cta { width: 100%; box-sizing: border-box; }
+  .cp-done-count { text-align: center; }
+  .cp-row { flex-wrap: nowrap; gap: 14px; padding: 14px; }
+  .cp-row.next { padding-block: 16px; }
+  .cp-row-text { flex: 1; }
+  .cp-row-title { font-size: 17px; }
+  .cp-row.next .cp-row-title { font-size: 18px; }
+  /* Round icon buttons, so long titles keep their room. */
+  .cp-copy, .cp-start { width: 44px; padding: 0; justify-content: center; flex: none; }
+  .cp-copy-label, .cp-start-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .cp-how { padding: 22px 20px; }
+}
+
+/* ---------- demo: the landing page's preview of a lesson ---------- */
+
+.is-demo { cursor: pointer; }
+.is-demo .lp-top, .is-demo .lp-player, .is-demo .lp-cardhead { display: none; }
+.is-demo .lp-stage { padding: 0 0 8px; gap: 18px; overflow: hidden; }
+.is-demo .lp-card { max-width: none; box-shadow: none; }
+.is-demo .lp-voice { max-width: none; padding: 0 6px; min-height: 0; }
+.is-demo .lp-editor .cm-scroller { padding-top: 22px; }

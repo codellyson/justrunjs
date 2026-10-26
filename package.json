@@ -5,7 +5,6 @@
   "description": "Workspace root for justrunjs (marketing site + browser editor + justui design system).",
   "scripts": {
     "dev": "pnpm --filter runjs-rs-marketing dev",
-    "tauri:dev": "cargo tauri dev",
     "build": "pnpm --filter runjs-rs-marketing build",
     "assets": "pnpm --filter runjs-rs-marketing assets"
   }

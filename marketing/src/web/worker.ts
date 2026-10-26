@@ -9,9 +9,15 @@ type Capture = [number, string];
 let captures: Capture[] = [];
 let captureActive = false;
 
+let currentLine = 0; // the top-level statement running now (set by __line)
+
 const globalAny = globalThis as unknown as {
   __inspect: (v: unknown) => string;
   __capture: (line: number, value: unknown) => unknown;
+  __line: (line: number) => void;
+};
+globalAny.__line = (line) => {
+  currentLine = line;
 };
 
 globalAny.__inspect = __inspect;
@@ -31,7 +37,7 @@ for (const m of ["log", "info", "warn", "error", "debug"] as ConsoleMethod[]) {
   console[m] = (...args: unknown[]) => {
     if (captureActive) {
       const formatted = args.map((a) => __inspect(a)).join(" ");
-      captures.push([0, formatted]);
+      captures.push([currentLine, formatted]); // the line whose statement called console.*
     }
     orig(...args);
   };
@@ -52,7 +58,8 @@ interface LineResult {
 
 async function evalSnippet(source: string): Promise<LineResult[]> {
   captures = [];
-  const { code, sourceType } = transpile(source, { instrument: true });
+  currentLine = 0;
+  const { code, sourceType } = transpile(source, { instrument: true, trackLines: true });
   captureActive = true;
   try {
     if (sourceType === "module") {
@@ -90,6 +97,9 @@ self.onmessage = async (e: MessageEvent<EvalRequest>) => {
     self.postMessage({ id, ok: true, results, ms });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    self.postMessage({ id, ok: false, error: msg });
+    // Values from the lines that ran before the throw still count; `line` is where it threw
+    // (0 when it never started running, e.g. a syntax error).
+    const results = captures.map(([line, display]) => ({ line, display }));
+    self.postMessage({ id, ok: false, error: msg, line: currentLine, results });
   }
 };

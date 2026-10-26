@@ -9,8 +9,19 @@
 // unstyled and ends up invisible in the page corner.
 import "../../styles/global.css";
 import "../../web/style.css";
-import { BUILT_IN_THEMES } from "../../lib/theme-plugins";
+import "@fontsource-variable/recursive/full.css";
+import { THEMES } from "../../lib/classroom-theme";
 import { EXAMPLE_CATEGORIES } from "../../web/examples";
+import { readFileSync } from "node:fs";
+import course from "../../learn/course.json";
+import { formatTime } from "../../web/lesson";
+
+// The course's lessons, in course order; each has its page at /learn/<slug>.
+// Relative to the project root (Astro's cwd): import.meta.url points into dist/ once bundled.
+const LESSONS = course.lessons.map((slug) => {
+  const l = JSON.parse(readFileSync(`public/lessons/${slug}.json`, "utf8"));
+  return { slug, title: l.title, kind: l.kind, language: l.language, length: formatTime(l.durationMs) };
+});
 ---
 
 <!doctype html>
@@ -18,7 +29,14 @@ import { EXAMPLE_CATEGORIES } from "../../web/examples";
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>justrunjs — in your browser</title>
+    <title>crow: scratchpad</title>
+    <script is:inline>
+      // Lessons moved to their own pages; old /web/?lesson=<name> links still work.
+      (function () {
+        var lesson = new URLSearchParams(location.search).get("lesson");
+        if (lesson) location.replace("/learn/" + encodeURIComponent(lesson));
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
@@ -61,23 +79,28 @@ import { EXAMPLE_CATEGORIES } from "../../web/examples";
   </head>
   <body>
     <aside id="sidebar" aria-label="actions">
-      <button class="icon-btn" id="btn-run" title="Run (⌘↵)">
+      <button class="icon-btn" id="btn-run" aria-label="Run (⌘↵)" data-label="Run (⌘↵)" data-short="Run">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M7 4.5v15l13-7.5z" />
         </svg>
       </button>
-      <button class="icon-btn" id="btn-stop" title="Stop">
+      <button class="icon-btn" id="btn-stop" aria-label="Stop" data-label="Stop" data-short="Stop">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <rect x="5" y="5" width="14" height="14" rx="1.5" />
         </svg>
       </button>
-      <button class="icon-btn" id="btn-examples" title="Examples & lessons">
+      <button class="icon-btn" id="btn-examples" aria-label="Examples & lessons" data-label="Examples & lessons" data-short="Lessons">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M4 4h9a2 2 0 0 1 2 2v14a1 1 0 0 0-1-1H4z" />
           <path d="M20 4h-3a2 2 0 0 0-2 2v14a1 1 0 0 1 1-1h4z" />
         </svg>
       </button>
-      <button class="icon-btn" id="btn-share" title="Share (copy link)">
+      <button class="icon-btn author-only" id="btn-record" aria-label="Record a lesson" data-label="Record a lesson" data-short="Record" aria-pressed="false">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <circle cx="12" cy="12" r="7" />
+        </svg>
+      </button>
+      <button class="icon-btn" id="btn-share" aria-label="Share (copy link)" data-label="Share (copy link)" data-short="Share">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="18" cy="5" r="3" />
           <circle cx="6" cy="12" r="3" />
@@ -90,13 +113,19 @@ import { EXAMPLE_CATEGORIES } from "../../web/examples";
       <div class="sidebar-status" id="sidebar-status" title="ready">
         <span class="status-dot" aria-hidden="true"></span>
       </div>
-      <button class="icon-btn" id="btn-settings" title="Settings">
+      <button class="icon-btn" id="btn-account" aria-label="Sign in to save your work" data-label="Sign in to save your work" data-short="Account">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="8" r="4" />
+          <path d="M4 21a8 8 0 0 1 16 0" />
+        </svg>
+      </button>
+      <button class="icon-btn" id="btn-settings" aria-label="Settings" data-label="Settings" data-short="Settings">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="3" />
           <path d="M19.14 12.94a7.957 7.957 0 0 0 0-1.88l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a8.07 8.07 0 0 0-1.62-.94l-.36-2.54A.5.5 0 0 0 13.91 2h-3.82a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.55-1.62.94l-2.39-.96a.5.5 0 0 0-.61.22L2.7 8.48a.5.5 0 0 0 .12.64l2.03 1.58a7.957 7.957 0 0 0 0 1.88L2.82 14.16a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .61.22l2.39-.96c.49.39 1.03.7 1.62.94l.36 2.54a.5.5 0 0 0 .5.42h3.82a.5.5 0 0 0 .5-.42l.36-2.54c.59-.24 1.13-.55 1.62-.94l2.39.96a.5.5 0 0 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58z" />
         </svg>
       </button>
-      <a class="icon-btn" id="btn-home" href="/" title="Back to overview">
+      <a class="icon-btn" id="btn-home" href="/" aria-label="Back to overview" data-label="Back to overview" data-short="Home">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M3 12l9-9 9 9" />
           <path d="M5 10v10h14V10" />
@@ -105,9 +134,14 @@ import { EXAMPLE_CATEGORIES } from "../../web/examples";
     </aside>
     <main>
       <div id="editor">
-        <div id="tabs" role="tablist"></div>
+        <div class="tab-bar">
+          <div id="tabs" role="tablist" aria-label="Open tabs"></div>
+          <span id="save-status" class="save-status" role="status" aria-live="polite"></span>
+          <button id="btn-new-tab" class="tab-new" title="New tab" aria-label="New tab">+</button>
+        </div>
         <div id="panel-tabs" class="panel-tabs hidden" role="tablist"></div>
         <div id="editor-host"></div>
+        <div id="lesson-bar" class="lesson-bar hidden" role="toolbar" aria-label="Lesson recording"></div>
       </div>
       <div id="splitter" aria-hidden="true"></div>
       <div id="results">
@@ -132,9 +166,9 @@ import { EXAMPLE_CATEGORIES } from "../../web/examples";
             title="Live preview"
             sandbox="allow-scripts allow-modals allow-popups allow-forms"
           ></iframe>
-          <div id="console-drawer" class="console-drawer">
+          <div id="console-drawer" class="console-drawer collapsed">
             <div id="console-head" class="console-head">
-              <button id="console-toggle" class="console-toggle" title="Collapse / expand console">
+              <button id="console-toggle" class="console-toggle" title="Show or hide the console" aria-expanded="false" aria-controls="console-log">
                 <span class="console-title">Console</span>
                 <span id="console-count" class="console-count"></span>
               </button>
@@ -149,9 +183,25 @@ import { EXAMPLE_CATEGORIES } from "../../web/examples";
     <div id="examples-popover" class="examples-popover hidden" role="dialog" aria-label="Examples and lessons">
       <div class="examples-header">
         <span class="examples-heading">Examples &amp; lessons</span>
-        <span class="examples-sub">Click one to open it in a new tab</span>
+        <span class="examples-sub">Lessons open in the classroom; examples open in a new tab</span>
       </div>
       <div class="examples-scroll">
+        {LESSONS.length > 0 && (
+          <div class="examples-group">
+            <div class="examples-group-title">Lessons</div>
+            {LESSONS.map((l) => (
+              <a class="example-item" href={`/learn/${l.slug}`}>
+                <span class="example-item-top">
+                  <span class="example-title">{l.title}</span>
+                  <span class:list={["example-lang", l.kind === "playground" ? "lang-play" : l.language === "typescript" ? "lang-ts" : "lang-js"]}>
+                    {l.kind === "playground" ? "</>" : l.language === "typescript" ? "TS" : "JS"}
+                  </span>
+                </span>
+                <span class="example-blurb">Narrated lesson · {l.length}</span>
+              </a>
+            ))}
+          </div>
+        )}
         {
           EXAMPLE_CATEGORIES.map((cat) => (
             <div class="examples-group">
@@ -192,6 +242,15 @@ import { EXAMPLE_CATEGORIES } from "../../web/examples";
     </div>
 
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+    <div id="new-tab-menu" class="settings-popover new-tab-menu hidden" role="dialog" aria-label="New tab">
+      <div class="settings-section">
+        <button type="button" class="new-tab-option" data-new="typescript"><span class="example-lang lang-ts">TS</span>TypeScript scratchpad</button>
+        <button type="button" class="new-tab-option" data-new="javascript"><span class="example-lang lang-js">JS</span>JavaScript scratchpad</button>
+        <button type="button" class="new-tab-option" data-new="npm"><span class="example-lang lang-ts">TS</span>Scratchpad with an npm import</button>
+        <button type="button" class="new-tab-option" data-new="playground"><span class="example-lang lang-play">&lt;/&gt;</span>HTML/CSS/JS playground</button>
+      </div>
+    </div>
+    <div id="account-popover" class="settings-popover account-popover hidden" role="dialog" aria-label="Account"></div>
 
     <div id="settings-popover" class="settings-popover hidden" role="dialog" aria-label="Settings">
       <div class="settings-section">
@@ -204,7 +263,7 @@ import { EXAMPLE_CATEGORIES } from "../../web/examples";
 
         <div class="settings-themes">
           {
-            BUILT_IN_THEMES.map((t) => (
+            THEMES.map((t) => (
               <button
                 type="button"
                 class="theme-option"
@@ -232,7 +291,7 @@ import { EXAMPLE_CATEGORIES } from "../../web/examples";
         </div>
 
         <div class="settings-row settings-row-inline">
-          <span>Tab size</span>
+          <span>Indent size</span>
           <div class="settings-segmented">
             <label><input type="radio" name="opt-tab-size" value="2" /><span>2</span></label>
             <label><input type="radio" name="opt-tab-size" value="4" /><span>4</span></label>
@@ -250,14 +309,26 @@ import { EXAMPLE_CATEGORIES } from "../../web/examples";
         </label>
 
         <label class="settings-row">
-          <span>Auto-evaluate on type</span>
+          <span>Run code as you type</span>
           <input type="checkbox" id="opt-auto-eval" />
         </label>
 
         <label class="settings-row">
-          <span>Inline values in playground</span>
+          <span>Show values in playground code</span>
           <input type="checkbox" id="opt-playground-inline" />
         </label>
+        <label class="settings-row">
+          <span>Lesson recording (for authors)</span>
+          <input type="checkbox" id="opt-author" />
+        </label>
+      </div>
+      <div class="settings-section">
+        <div class="settings-title">Keyboard</div>
+        <dl class="shortcut-list">
+          <dt><kbd>⌘</kbd><kbd>↵</kbd></dt><dd>Run the code (Ctrl+Enter on Windows)</dd>
+          <dt><kbd>Esc</kbd></dt><dd>Close a panel</dd>
+          <dt><kbd>⌘</kbd><kbd>Delete</kbd></dt><dd>Close the focused tab</dd>
+        </dl>
       </div>
     </div>
 

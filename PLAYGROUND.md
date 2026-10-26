@@ -25,15 +25,8 @@ instead. This is the central architectural fact of Phase 2:
 | | Scratchpad tab | Playground tab |
 |---|---|---|
 | Surface (web) | Web Worker | sandboxed `<iframe>` |
-| Surface (desktop) | Rust/SWC + V8 core | sandboxed `<iframe>` (webview) |
 | DOM | no | yes |
 | Output | inline per-line values | rendered page + console + (optional) inline values |
-
-Note the desktop row: the scratchpad uses the native Rust core, but the
-**playground uses the iframe on both web and desktop** — a rendered DOM is a
-browser concern, and the Tauri webview is a browser. The Rust core is not
-involved in playground mode. This keeps web/desktop behavior identical for
-playground and avoids reimplementing a DOM in V8.
 
 ---
 
@@ -140,8 +133,7 @@ The user JS goes through the **same Babel pipeline** as the scratchpad
 top-level `await` (module script), and — when inline values are enabled — the
 `__capture` instrumentation. The pipeline is factored out of `worker.ts` into a
 shared `transpile.ts` so both the worker and the playground use one
-implementation. (Keeps the "web and Rust core stay in sync" contract intact —
-this only touches the web side.)
+implementation.
 
 ---
 
@@ -208,25 +200,6 @@ entries carry `{ html, css, js }` and open as playground tabs.
 
 ---
 
-## 8. Desktop (Tauri) parity
-
-The frontend is shared, so the UI ships to desktop automatically.
-
-  - **CSP — verified at config level (2d):** `tauri.conf.json` has
-    `app.security.csp = null`, so Tauri injects **no** Content-Security-Policy.
-    The webview therefore imposes no restriction on the preview iframe: inline
-    `<script>`/`<style>` in `srcdoc` run, `import` from `https://esm.sh`
-    resolves, and cross-origin `postMessage` from the sandboxed frame reaches the
-    parent. **No config change is needed.** ⚠️ Guard for later: if a CSP is ever
-    introduced (to lock down the app shell), it must add `frame-src`,
-    `script-src` (with the inline allowance the preview needs), `style-src`, and
-    `connect-src https://esm.sh` — or the playground preview will silently break.
-  - Runtime confirmation on WebView2 (Windows) / WKWebView (macOS) still wants a
-    real `cargo tauri dev` pass on each OS; the null-CSP analysis is sound but
-    the native window can't be driven from the browser test harness.
-
----
-
 ## 9. Delivery slices — all shipped
 
 - ✅ **2a — Render loop.** Playground `Tab` kind, 3-panel editor switcher, iframe
@@ -235,7 +208,7 @@ The frontend is shared, so the UI ships to desktop automatically.
 - ✅ **2c — Inline values.** `__capture` → `value` messages → JS line-end widgets
   + settings toggle.
 - ✅ **2d — Share/save/examples.** Versioned `SharedBin` (scratchpad|playground),
-  playground example category, desktop CSP verified at config level (§8).
+  playground example category.
 
 Playground tabs auto-save through the existing localStorage tab serialization
 (they're just serialized `Tab` objects with `kind: "playground"`).

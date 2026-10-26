@@ -1,8 +1,7 @@
-@import "@codellyson/justui/tokens.css";
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* justui 1.0: tokens, Tailwind v4 and the design config in one import. */
+@import "@codellyson/justui/tailwind.css";
+/* The Astro adapters (Button, ThemeToggle) ship as source, outside the scanned dist. */
+@source "../../node_modules/@codellyson/justui/src/astro";
 
 * {
   scrollbar-width: thin;
@@ -29,7 +28,18 @@
   background: transparent;
 }
 
+/* Recursive everywhere, like the lessons: sans with a little of its casual axis, code in its
+ * casual mono. */
+@theme {
+  --font-sans: "Recursive Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Recursive Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+body { font-variation-settings: "MONO" 0, "CASL" 0.6; }
+.font-mono, code, kbd, pre { font-variation-settings: "MONO" 1, "CASL" 1; }
+
 @layer base {
+  /* Avoid a lone word on the last line of a paragraph. */
+  p, dd { text-wrap: pretty; }
   body {
     @apply bg-bg text-primary font-sans antialiased;
   }
