@@ -520,10 +520,10 @@ export function initLessonMode(ctx: LessonContext) {
       items.push(
         text("Lesson complete.", "lesson-done"),
         ...(lesson.outro ? [text(lesson.outro, "lesson-caption")] : []),
-        // Your turn comes first; replaying is the secondary choice.
-        exp
-          ? button("Open your experiment", () => ctx.activateTab(exp.id), undefined, true)
-          : button("Start experimenting", () => fork(undefined, "This experiment is yours. Change anything; the lesson stays as it is."), undefined, true),
+        // Your turn comes first, from the finished code the outro talks about; an older
+        // experiment (forked mid-lesson) is offered second, then replaying.
+        button("Try it yourself", () => fork(undefined, "This experiment starts from the finished lesson. Change anything; the lesson stays as it is."), undefined, true),
+        ...(exp ? [button("Open your earlier experiment", () => ctx.activateTab(exp.id))] : []),
         button("↺ Replay", replay),
         ...nextLessonButton(),
       );

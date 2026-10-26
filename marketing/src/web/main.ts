@@ -684,10 +684,27 @@ const PLAIN_ERRORS: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/^Unexpected token, expected "(.+)"/, (m) => `This line isn't finished: expected "${m[1]}" here (maybe a comma or a closing bracket)`],
   [/^Unexpected token/, () => "This line isn't finished or has a typo"],
   [/^Missing semicolon/, () => "Two statements run together: add a ; or a line break"],
+  [/^Identifier directly after number/, () => "A name runs straight into a number: add a space or an operator"],
   [/^(\S+) is not defined/, (m) => `${m[1]} isn't defined (check the spelling, or define it first)`],
   [/^Cannot read propert(?:y|ies) of (undefined|null) \(reading '(.+)'\)/, (m) => `Can't read .${m[2]} of ${m[1]}`],
   [/^(\S+) is not a function/, (m) => `${m[1]} isn't a function, so it can't be called`],
 ];
+
+/** The last opening bracket left unclosed in `src` (ignoring strings and comments), or "". */
+function unclosedBracket(src: string): string {
+  const stack: string[] = [];
+  const pairs: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (c === '"' || c === "'" || c === "`") {
+      for (i++; i < src.length && src[i] !== c && src[i] !== "\n"; i++) if (src[i] === "\\") i++;
+    } else if (c === "/" && src[i + 1] === "/") {
+      while (i < src.length && src[i] !== "\n") i++;
+    } else if ("([{".includes(c)) stack.push(c);
+    else if (pairs[c] && stack[stack.length - 1] === pairs[c]) stack.pop();
+  }
+  return stack[stack.length - 1] ?? "";
+}
 
 /** The current scratchpad error, placed on a line, or null. */
 function scratchError(): { line: number; message: string } | null {
@@ -701,6 +718,11 @@ function scratchError(): { line: number; message: string } | null {
   const bare = raw.replace(/\s*\(\d+:\d+\)/, "");
   const plain = PLAIN_ERRORS.find(([re]) => re.test(bare));
   let message = plain ? plain[1](bare.match(plain[0])!) : bare;
+  // "expected ','" at an unclosed ( [ or { is really "you never closed it"; say that instead.
+  if (at && /^Unexpected token, expected/.test(bare)) {
+    const open = unclosedBracket(editor.state.doc.toString());
+    if (open) message = `A ${open} is never closed`;
+  }
   if (column) message += ` (column ${column})`;
   // A runtime error stops everything after it; say so when there's code below.
   if (!at && line && line < editor.state.doc.lines) message += ". Lines after this didn't run";
@@ -861,6 +883,8 @@ async function runEval(): Promise<void> {
     // nothing, so lines above it keep their values from the last run that finished.
     const syntaxLine = Number(msg.match(/\((\d+):\d+\)/)?.[1] ?? 0);
     lastResults = syntaxLine ? lastGoodResults.filter((r) => r.line > 0 && r.line < syntaxLine) : (partial.results ?? []);
+    // Values a runtime error left behind are real too; a later syntax error can fall back on them.
+    if (!syntaxLine) lastGoodResults = lastResults;
     paintResults();
     setStatus(msg, "error");
   } finally {

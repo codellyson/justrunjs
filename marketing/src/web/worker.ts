@@ -37,7 +37,7 @@ for (const m of ["log", "info", "warn", "error", "debug"] as ConsoleMethod[]) {
   console[m] = (...args: unknown[]) => {
     if (captureActive) {
       const formatted = args.map((a) => __inspect(a)).join(" ");
-      captures.push([0, formatted]);
+      captures.push([currentLine, formatted]); // the line whose statement called console.*
     }
     orig(...args);
   };
