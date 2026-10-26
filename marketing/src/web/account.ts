@@ -150,7 +150,9 @@ export function initAccount(ctx: AccountContext) {
 
   function render() {
     button.classList.toggle("signed-in", !!email);
-    button.title = email ? `Signed in as ${email}` : "Sign in to save your work";
+    const label = email ? `Signed in as ${email}` : "Sign in to save your work";
+    button.setAttribute("aria-label", label);
+    button.dataset.label = label;
     const section = el("div", { className: "settings-section account-section" });
     if (email) {
       section.append(
@@ -238,7 +240,14 @@ export function initAccount(ctx: AccountContext) {
     /** `short` is the phone version, where the tab bar has little room. */
     statusFor(tab: LessonTab): { text: string; short: string; reason?: string; retry?: () => void } {
       const t = tab as SyncedTab;
-      if (!isExperiment(t)) return { text: "On this device", short: "On device", reason: "Saved in this browser. Experiments from lessons also save to your account when you sign in." };
+      if (!isExperiment(t))
+        return {
+          text: "On this device",
+          short: "On device",
+          reason: email
+            ? "Saved in this browser. Only experiments from lessons save to your account."
+            : "Saved in this browser. Experiments from lessons also save to your account when you sign in.",
+        };
       if (!email) return { text: "On this device · sign in to keep it everywhere", short: "On device" };
       const s = status.get(t.id);
       if (s === "error") return { text: "Couldn't save to your account", short: "Not saved", reason: `${failures.get(t.id)?.reason ?? ""} Your work is safe on this device.`.trim(), retry: () => retry(t) };

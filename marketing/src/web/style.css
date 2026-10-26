@@ -1052,8 +1052,10 @@ select.lesson-btn option { background: rgb(var(--bg-secondary)); color: rgb(var(
 .lesson-caption {
   flex-basis: 100%;
   color: rgb(var(--text-primary));
-  font-size: 13px;
+  /* The instructor's voice: the most important text in a lesson. */
+  font-size: 15px;
   line-height: 1.45;
+  max-width: 70ch;
   min-height: 1.45em;
 }
 .lesson-caption.lesson-intro { color: rgb(var(--text-secondary)); }
@@ -1135,7 +1137,15 @@ select.lesson-btn option { background: rgb(var(--bg-secondary)); color: rgb(var(
 
   main {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1.1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1.4fr) minmax(0, 1fr);
+  }
+  /* The caption must not eat the code on a small screen: two lines at most. */
+  .lesson-caption {
+    font-size: 13px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
   #splitter { display: none; }
   #results {
@@ -1194,4 +1204,47 @@ select.lesson-btn option { background: rgb(var(--bg-secondary)); color: rgb(var(
   border: 1px solid rgb(var(--border));
   border-radius: 4px;
   color: rgb(var(--text-primary));
+}
+
+/* ---------- sidebar names ---------- */
+
+/* The rail is icon-only; its names show beside each icon on hover or keyboard focus. */
+#sidebar { position: relative; z-index: 6; }
+@media (min-width: 768px) {
+  #sidebar .icon-btn { position: relative; }
+  #sidebar .icon-btn::after {
+    content: attr(data-label);
+    position: absolute;
+    left: calc(100% + 8px);
+    top: 50%;
+    transform: translateY(-50%);
+    white-space: nowrap;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    background: rgb(var(--text-primary));
+    color: rgb(var(--bg));
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+  }
+  #sidebar .icon-btn:hover::after,
+  #sidebar .icon-btn:focus-visible::after { opacity: 1; }
+}
+/* Phones have no hover: the bottom bar carries a short name under each icon. */
+@media (max-width: 767px) {
+  #sidebar .icon-btn {
+    flex-direction: column;
+    gap: 3px;
+    width: auto;
+    min-width: 44px;
+    height: 52px;
+    padding: 0 4px;
+  }
+  #sidebar .icon-btn::after { content: attr(data-short); font-size: 11px; line-height: 1; }
+}
+
+/* On wide screens, centre messages over the editor column rather than the preview. */
+@media (min-width: 768px) {
+  .toast { left: calc(48px + (100vw - 48px) / 4); }
 }

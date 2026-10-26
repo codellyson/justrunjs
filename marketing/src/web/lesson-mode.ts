@@ -321,17 +321,22 @@ export function initLessonMode(ctx: LessonContext) {
     // "Complete" means it parses; best is also at the end of a finished line, so a pause
     // shows `nums.map(…);` rather than a valid-but-half-typed `nums.ma`.
     const check = (t: number) => {
-      const text = seek(lesson!, marks, t).docs.get(slot)?.toString() ?? "";
+      const docs = seek(lesson!, marks, t).docs;
       try {
-        transpile(text);
+        transpile(docs.get(slot)?.toString() ?? "");
       } catch {
         return 0;
       }
-      return text === "" || text.endsWith("\n") ? 2 : 1;
+      // Best: every file (HTML and CSS too) ends on a finished line, so nothing is mid-word.
+      const settled = [...docs.values()].every((d) => {
+        const text = d.toString();
+        return text === "" || text.endsWith("\n");
+      });
+      return settled ? 2 : 1;
     };
     const atMs = check(ms);
     if (atMs === 2) return ms;
-    const times = lesson!.events.filter((e) => e.t <= ms && e.type === "change" && e.file === slot).map((e) => e.t);
+    const times = lesson!.events.filter((e) => e.t <= ms && e.type === "change").map((e) => e.t);
     let fallback = atMs ? ms : -1;
     for (let i = times.length - 1; i >= 0; i--) {
       if (ms - times[i] > 30_000) break; // nothing clean nearby: settle for what we found
@@ -479,7 +484,10 @@ export function initLessonMode(ctx: LessonContext) {
     clock.textContent = `${formatTime(ms)} / ${formatTime(lesson.durationMs)}`;
     if (document.activeElement !== range) range.value = String(ms);
     const line = !started ? INTRO : currentCaption(ms);
-    if (caption.textContent !== line) caption.textContent = line;
+    if (caption.textContent !== line) {
+      caption.textContent = line;
+      caption.title = line; // full text when a small screen clamps it
+    }
     caption.classList.toggle("lesson-intro", !started);
   }
 
@@ -505,7 +513,9 @@ export function initLessonMode(ctx: LessonContext) {
   function render() {
     $("btn-record").classList.toggle("recording", !!rec && !rec.done);
     $("btn-record").setAttribute("aria-pressed", String(!!rec && !rec.done));
-    $("btn-record").title = rec && !rec.done ? "Stop recording" : "Record a lesson";
+    const recLabel = rec && !rec.done ? "Stop recording" : "Record a lesson";
+    $("btn-record").setAttribute("aria-label", recLabel);
+    $("btn-record").dataset.label = recLabel;
     const items: Node[] = [];
     if (rec && !rec.done) {
       items.push(text("", "lesson-dot"), clock, button(rec.pausedAt ? "Resume" : "Pause", togglePause), button("Stop", stopRecording));
@@ -533,7 +543,10 @@ export function initLessonMode(ctx: LessonContext) {
       const exp = onLessonTab() ? latestExperiment() : undefined;
       range.max = String(lesson.durationMs);
       if (onLessonTab()) items.push(caption);
-      items.push(button(onLessonTab() && !audio.paused ? "❚❚ Pause" : "▶ Play", togglePlay, "Play or pause (Space); ←/→ jump 5s"), clock, range, speed);
+      // Before the lesson starts, Play is the one obvious thing to press.
+      const fresh = onLessonTab() && !started;
+      const playLabel = onLessonTab() && !audio.paused ? "❚❚ Pause" : fresh ? "▶ Play lesson" : "▶ Play";
+      items.push(button(playLabel, togglePlay, "Play or pause (Space); ←/→ jump 5s", fresh), clock, range, speed);
       if (exp) items.push(button("Open your experiment", () => ctx.activateTab(exp.id)));
       if (mine) {
         items.push(
@@ -542,7 +555,10 @@ export function initLessonMode(ctx: LessonContext) {
         );
       }
     }
+    // Re-rendering replaces the buttons; keep keyboard focus on the same control.
+    const focusedAt = [...bar.querySelectorAll("button, select, input")].indexOf(document.activeElement as Element);
     bar.replaceChildren(...items);
+    if (focusedAt >= 0) bar.querySelectorAll<HTMLElement>("button, select, input")[focusedAt]?.focus();
     bar.classList.toggle("hidden", !items.length);
     renderTime();
   }

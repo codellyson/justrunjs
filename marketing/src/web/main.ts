@@ -168,6 +168,9 @@ let activeId: string | null = null;
 /** Backfill fields missing on tabs persisted before playground support. */
 function normalizeTab(t: Tab): Tab {
   if (!t.kind) t.kind = "scratchpad";
+  // Experiments made before the naming settled were called "<lesson> @ 0:12.html".
+  const legacy = t.lesson && t.name.match(/^(.*) @ (\d+:\d\d)\.(?:html|js|ts)$/);
+  if (legacy) t.name = `${legacy[1]} (experiment from ${legacy[2]})`;
   if (t.kind === "playground") {
     t.html ??= "";
     t.css ??= "";
@@ -1336,7 +1339,8 @@ function onTabKey(e: KeyboardEvent, id: string): void {
   } else if (e.key === "Enter" || e.key === " ") {
     e.preventDefault();
     activateTab(id);
-  } else if (e.key === "Delete" || e.key === "Backspace") {
+  } else if ((e.key === "Delete" || e.key === "Backspace") && (e.metaKey || e.ctrlKey)) {
+    // A modifier, so a stray Delete while focus is on the tab strip can't close work.
     e.preventDefault();
     closeTab(id);
   }
@@ -1378,6 +1382,7 @@ function renderTabs(): void {
     const name = document.createElement("span");
     name.className = "tab-name";
     name.textContent = t.name;
+    el.title = t.name; // long experiment names are cut off in the strip
 
     el.addEventListener("click", () => activateTab(t.id));
 
@@ -1389,7 +1394,7 @@ function renderTabs(): void {
       close.className = "tab-close";
       close.textContent = "×";
       close.tabIndex = -1;
-      close.title = "Close (Delete)";
+      close.title = "Close (⌘ Delete)";
       close.setAttribute("aria-label", `Close ${t.name}`);
       close.addEventListener("click", (e) => {
         e.stopPropagation();
