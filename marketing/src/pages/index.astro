@@ -4,9 +4,7 @@ import Button from '@codellyson/justui/astro/Button.astro';
 import ThemeToggle from '@codellyson/justui/astro/ThemeToggle.astro';
 import EditorEmbed from '../components/EditorEmbed.astro';
 
-// In-browser scratchpad lives at /app (built later — link works today,
-// page is added in the web/ workspace).
-const launchUrl = '/web/index.html';
+const lessonUrl = '/web/?lesson=array-basics';
 const repoUrl = 'https://github.com/codellyson/justrunjs';
 
 const FAQ = [
@@ -54,7 +52,7 @@ const softwareJsonLd = {
   '@type': 'SoftwareApplication',
   name: 'justrunjs',
   description:
-    'A JavaScript scratchpad with inline values. Write TypeScript or JavaScript in your browser and see every top-level expression render its value on the same line.',
+    'A JavaScript scratchpad with inline values, and narrated coding lessons that replay in the same editor. Pause a lesson, change the code, run it, and return to the lesson.',
   applicationCategory: 'DeveloperApplication',
   operatingSystem: 'Web',
   offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
@@ -84,17 +82,21 @@ const faqJsonLd = {
             justrunjs
           </h1>
           <p class="text-xl sm:text-2xl text-primary font-medium mb-6">
-            A scratchpad with inline values.
+            Write JavaScript and see every value. Or learn it, one lesson at a time.
           </p>
           <p class="text-base text-secondary leading-relaxed max-w-xl">
-            Write TypeScript or JavaScript. Every top-level expression renders
-            its value next to the source line, the moment you stop typing.
-            Nothing to install.
+            Type TypeScript or JavaScript and each line's value appears next to
+            it as you type. Lessons play in the same editor: pause whenever you
+            like, change the code, run it, then go back to the lesson where you
+            left it. Nothing to install, and no account needed.
           </p>
 
           <div class="flex flex-wrap items-center gap-3 mt-8">
             <Button variant="primary" href="#playground" data-action="open-editor">
-              Open in browser
+              Try the editor
+            </Button>
+            <Button variant="secondary" href={lessonUrl}>
+              Take a lesson
             </Button>
           </div>
         </header>

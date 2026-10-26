@@ -11,8 +11,8 @@ interface Props {
 }
 
 const {
-  title = 'justrunjs — a JavaScript scratchpad with inline values.',
-  description = 'Type TypeScript or JavaScript. Every top-level value shows up next to its source line. Runs in your browser. Open source.',
+  title = 'justrunjs: a JavaScript scratchpad with inline values, and lessons that play in it',
+  description = 'Type TypeScript or JavaScript and see each line\'s value next to it. Follow narrated lessons that replay in the same editor: pause, change the code, run it, and return. Runs in your browser. Open source.',
   jsonLd,
 } = Astro.props;
 
@@ -23,7 +23,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site).toString();
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="generator" content={Astro.generator} />
     <link rel="canonical" href={canonical} />
 

@@ -123,7 +123,13 @@ const total = await Promise.resolve(40 + 2);
 total;
 `;
 
-const TABS_KEY = "runjs.tabs";
+const isEmbedded =
+  new URLSearchParams(window.location.search).get("embed") === "1" ||
+  window.parent !== window;
+
+// The landing-page embed keeps its own tabs, so a visitor first sees the starter
+// and /web/'s tabs are never shown to (or overwritten by) the demo.
+const TABS_KEY = isEmbedded ? "runjs.embedTabs" : "runjs.tabs";
 
 const NPM_TEMPLATE = `// Any npm package, served as ESM via esm.sh.
 import _ from "npm:lodash@4";
@@ -1167,10 +1173,6 @@ document.getElementById("btn-run")!.addEventListener("click", () => {
 
 document.getElementById("btn-stop")!.addEventListener("click", stopEval);
 
-const isEmbedded =
-  new URLSearchParams(window.location.search).get("embed") === "1" ||
-  window.parent !== window;
-
 if (isEmbedded) {
   const home = document.getElementById("btn-home");
   if (home) home.style.display = "none";
@@ -1191,6 +1193,13 @@ if (isEmbedded) {
       }
     });
   }
+}
+
+if (isEmbedded) {
+  // The landing page can't hear keys typed in here; a popover or CodeMirror that used Esc already prevented it.
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !e.defaultPrevented) window.parent.postMessage({ type: "collapse" }, "*");
+  });
 }
 
 window.addEventListener("message", (e: MessageEvent) => {

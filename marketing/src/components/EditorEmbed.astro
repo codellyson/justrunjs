@@ -7,8 +7,8 @@
 // The expand toggle lives inside the iframe (top-right of the results
 // pane). It posts {type: "toggle"} up to us; we flip the .expanded class
 // and post {type: "expanded" | "collapsed"} back so the iframe can flip
-// its icon. Esc collapses. The hero CTA also fires expand via the
-// data-action="open-editor" hook.
+// its icon. Esc (forwarded by the iframe as {type: "collapse"}) and Back
+// collapse. The hero CTA also fires expand via the data-action="open-editor" hook.
 ---
 
 <section
@@ -30,9 +30,8 @@
       loading="lazy"
     ></iframe>
   </div>
-  <p class="text-xs text-muted mt-2 text-center">
-    Press <kbd class="font-mono px-1.5 py-0.5 rounded border border-border bg-bg-secondary text-secondary">Esc</kbd> to collapse · Click the
-    <span aria-hidden="true">⛶</span> icon to expand
+  <p class="hidden sm:block text-xs text-muted mt-2 text-center">
+    Use the full-screen button in the editor's tab bar to expand · <kbd class="font-mono px-1.5 py-0.5 rounded border border-border bg-bg-secondary text-secondary">Esc</kbd> or Back to collapse
   </p>
 </section>
 
@@ -70,13 +69,19 @@
       card.classList.add("expanded");
       document.body.classList.add("has-expanded-editor");
       notify("expanded");
+      // An entry of its own, so Back collapses instead of leaving the page.
+      history.pushState({ editorExpanded: true }, "");
     }
-    function collapse() {
+    function collapse(fromPopstate) {
       if (!card.classList.contains("expanded")) return;
       card.classList.remove("expanded");
       document.body.classList.remove("has-expanded-editor");
       notify("collapsed");
+      if (!fromPopstate && history.state && history.state.editorExpanded) history.back();
     }
+    window.addEventListener("popstate", function () {
+      collapse(true);
+    });
     function toggle() {
       if (card.classList.contains("expanded")) collapse();
       else expand();
@@ -91,8 +96,7 @@
       else if (d.type === "toggle") toggle();
     });
 
-    // Hero / Download CTAs that want to "open" the playground — scroll to
-    // the card, then expand once it's roughly in view.
+    // The hero CTA scrolls to the card, then expands once it's roughly in view.
     document
       .querySelectorAll('[data-action="open-editor"]')
       .forEach(function (el) {
