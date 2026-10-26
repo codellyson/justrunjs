@@ -201,7 +201,7 @@ main {
   display: grid;
   /* Equal 50/50 split between editor and results by default. The splitter
    * can still be dragged at runtime; this just sets the starting ratio. */
-  grid-template-columns: 1fr 4px 1fr;
+  grid-template-columns: minmax(0, 1fr) 4px minmax(0, 1fr);
   min-height: 0;
   min-width: 0;
   height: 100%;
@@ -242,6 +242,15 @@ main {
 #splitter {
   background: transparent;
   cursor: col-resize;
+  position: relative;
+  touch-action: none;
+}
+/* A wider invisible grab area than the 4px track. */
+#splitter::after {
+  content: "";
+  position: absolute;
+  inset: 0 -4px;
+  z-index: 3;
 }
 
 #results {

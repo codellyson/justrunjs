@@ -1600,23 +1600,25 @@ async function formatBuffer(): Promise<void> {
   const splitter = document.getElementById("splitter");
   const mainEl = document.querySelector("main");
   if (!splitter || !mainEl) return;
-  let dragging = false;
-  splitter.addEventListener("mousedown", (e) => {
-    dragging = true;
+  // Pointer capture keeps the drag alive while the cursor is over the preview iframe,
+  // which would otherwise swallow the move and release events.
+  splitter.addEventListener("pointerdown", (e) => {
+    splitter.setPointerCapture(e.pointerId);
     document.body.style.cursor = "col-resize";
     e.preventDefault();
   });
-  window.addEventListener("mousemove", (e) => {
-    if (!dragging) return;
+  splitter.addEventListener("pointermove", (e) => {
+    if (!splitter.hasPointerCapture(e.pointerId)) return;
     const rect = mainEl.getBoundingClientRect();
     const rightWidth = Math.max(
       200,
       Math.min(rect.width - 200, rect.right - e.clientX),
     );
-    (mainEl as HTMLElement).style.gridTemplateColumns = `1fr 4px ${rightWidth}px`;
+    (mainEl as HTMLElement).style.gridTemplateColumns = `minmax(0, 1fr) 4px ${rightWidth}px`;
   });
-  window.addEventListener("mouseup", () => {
-    dragging = false;
+  const endDrag = () => {
     document.body.style.cursor = "";
-  });
+  };
+  splitter.addEventListener("pointerup", endDrag);
+  splitter.addEventListener("lostpointercapture", endDrag);
 })();
