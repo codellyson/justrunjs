@@ -14,11 +14,12 @@ import { EXAMPLE_CATEGORIES } from "../../web/examples";
 import { readdirSync, readFileSync } from "node:fs";
 
 // Published lessons are whatever sits in public/lessons; list them at build time.
-const lessonsDir = new URL("../../../public/lessons/", import.meta.url);
+// Relative to the project root (Astro's cwd): import.meta.url points into dist/ once bundled.
+const lessonsDir = "public/lessons";
 const LESSONS = readdirSync(lessonsDir)
   .filter((f) => f.endsWith(".json"))
   .map((f) => {
-    const l = JSON.parse(readFileSync(new URL(f, lessonsDir), "utf8"));
+    const l = JSON.parse(readFileSync(`${lessonsDir}/${f}`, "utf8"));
     const secs = Math.round(l.durationMs / 1000);
     return { slug: f.slice(0, -5), title: l.title, kind: l.kind, language: l.language, length: `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}` };
   })
