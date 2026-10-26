@@ -212,18 +212,19 @@ main {
   min-height: 0;
   height: 100%;
   overflow: hidden;
-  /* 40px file-tab bar, an auto panel-tab bar (0 when hidden), editor fills rest. */
+  /* 40px file-tab bar, lesson header and panel-tab bar (0 when hidden), editor fills rest. */
   display: grid;
-  grid-template-rows: 40px auto 1fr auto;
+  grid-template-rows: 40px auto auto 1fr auto;
 }
 
 /* Pinned rows: #panel-tabs is display:none on scratchpad tabs, and auto-placement
  * would then shift the editor into the panel row and the lesson bar into 1fr. */
 .tab-bar { grid-row: 1; }
-#panel-tabs { grid-row: 2; }
-#editor-host { grid-row: 3; }
+#lesson-head { grid-row: 2; }
+#panel-tabs { grid-row: 3; }
+#editor-host { grid-row: 4; }
 #lesson-bar,
-#lesson-invite { grid-row: 4; }
+#lesson-invite { grid-row: 5; }
 
 #editor-host {
   position: relative;
@@ -1072,6 +1073,68 @@ select.lesson-btn option { background: rgb(var(--bg-secondary)); color: rgb(var(
   animation: lesson-pulse 1.2s ease-in-out infinite;
 }
 @keyframes lesson-pulse { 50% { opacity: 0.3; } }
+
+/* Says which screen this is: the instructor's lesson, or the student's own experiment. */
+.lesson-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 7px 14px;
+  border-bottom: 1px solid rgb(var(--border));
+  background: rgb(var(--accent) / 0.12);
+  color: rgb(var(--text-primary));
+  font-size: 13px;
+}
+.lesson-head.hidden { display: none; }
+.lesson-head-label {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgb(var(--accent));
+  color: rgb(var(--accent-text));
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.lesson-head-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.lesson-head-state {
+  flex: none;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: rgb(var(--text-secondary));
+  font-variant-numeric: tabular-nums;
+}
+.lesson-head-state.playing { color: rgb(var(--text-primary)); }
+.lesson-head-state.playing::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgb(var(--accent));
+  animation: lesson-pulse 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) { .lesson-head-state.playing::before { animation: none; } }
+.lesson-head .lesson-btn { flex: none; margin-left: auto; }
+#editor[data-mode="experiment"] .lesson-head { background: rgb(var(--bg-secondary)); }
+#editor[data-mode="experiment"] .lesson-head-label {
+  background: transparent;
+  color: rgb(var(--text-primary));
+  box-shadow: inset 0 0 0 1px rgb(var(--border));
+}
+/* The lesson's code is the instructor's: frame it in the accent. */
+#editor[data-mode="lesson"] #editor-host { box-shadow: inset 0 0 0 1px rgb(var(--accent) / 0.45); }
+.tab.tab-lesson { color: rgb(var(--accent)); font-weight: 600; }
+.tab.tab-lesson.active { box-shadow: inset 0 2px 0 rgb(var(--accent)); }
 @media (prefers-reduced-motion: reduce) { .lesson-dot { animation: none; } }
 
 /* ---------- account popover ---------- */
@@ -1177,7 +1240,7 @@ select.lesson-btn option { background: rgb(var(--bg-secondary)); color: rgb(var(
 @media (pointer: coarse) {
   .icon-btn { width: 44px; height: 44px; }
   .tab-new { width: 48px; }
-  #editor { grid-template-rows: 44px auto 1fr auto; }
+  #editor { grid-template-rows: 44px auto auto 1fr auto; }
   .panel-tab { min-height: 44px; padding-inline: 16px; }
   .tab .tab-close { width: 32px; height: 32px; }
   .lesson-btn { min-height: 44px; min-width: 44px; }

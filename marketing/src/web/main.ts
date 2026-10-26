@@ -1467,6 +1467,7 @@ function renderTabs(): void {
     name.className = "tab-name";
     name.textContent = t.name;
     el.title = t.name; // long experiment names are cut off in the strip
+    if (t.lessonSource) el.classList.add("tab-lesson");
 
     el.addEventListener("click", () => activateTab(t.id));
 

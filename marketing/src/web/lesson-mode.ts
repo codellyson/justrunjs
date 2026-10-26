@@ -460,7 +460,7 @@ export function initLessonMode(ctx: LessonContext) {
     const files = new Map(lesson.files.map((f) => [f.id, f.content]));
     lessonTab = {
       id: `lesson-${name}`,
-      name: `▶ ${lesson.title}`,
+      name: lesson.title,
       kind: lesson.kind,
       content: files.get("main") ?? "",
       language: lesson.language,
@@ -580,8 +580,6 @@ export function initLessonMode(ctx: LessonContext) {
         ...nextLessonButton(),
       );
     } else if (lesson) {
-      const t = ctx.activeTab();
-      const mine = t.lesson?.slug === slug;
       const exp = onLessonTab() ? latestExperiment() : undefined;
       range.max = String(lesson.durationMs);
       if (onLessonTab()) items.push(caption);
@@ -590,19 +588,40 @@ export function initLessonMode(ctx: LessonContext) {
       const playLabel = onLessonTab() && !audio.paused ? "❚❚ Pause" : fresh ? "▶ Play lesson" : "▶ Play";
       items.push(button(playLabel, togglePlay, "Play or pause (Space); ←/→ jump 5s", fresh), clock, range, speed);
       if (exp) items.push(button("Open your experiment", () => ctx.activateTab(exp.id)));
-      if (mine) {
-        items.push(
-          text(`Your experiment · from ${formatTime(t.lesson!.originMs)}`, "lesson-mode"),
-          button("↩ Back to lesson", () => backToLesson()),
-        );
-      }
     }
     // Re-rendering replaces the buttons; keep keyboard focus on the same control.
     const focusedAt = [...bar.querySelectorAll("button, select, input")].indexOf(document.activeElement as Element);
     bar.replaceChildren(...items);
     if (focusedAt >= 0) bar.querySelectorAll<HTMLElement>("button, select, input")[focusedAt]?.focus();
     bar.classList.toggle("hidden", !items.length);
+    renderHead();
     renderTime();
+  }
+
+  function renderHead() {
+    const t = ctx.activeTab();
+    const head = $("lesson-head");
+    const items: Node[] = [];
+    const inLesson = !!lesson && onLessonTab();
+    if (inLesson) {
+      const playing = !audio.paused;
+      const state = ended ? "Finished" : playing ? "Playing" : started ? `Paused at ${formatTime(audio.currentTime * 1000)}` : "Not started";
+      items.push(text("Lesson", "lesson-head-label"), text(lesson!.title, "lesson-head-title"), text(state, "lesson-head-state" + (playing ? " playing" : "")));
+    } else if (t.lesson) {
+      const same = !!lesson && t.lesson.slug === slug;
+      items.push(
+        text("Your experiment", "lesson-head-label"),
+        text(`from ${same ? lesson!.title : "a lesson"} at ${formatTime(t.lesson.originMs)}`, "lesson-head-title"),
+      );
+      if (same) items.push(button("↩ Back to lesson", () => backToLesson()));
+      else {
+        const a = Object.assign(document.createElement("a"), { className: "lesson-btn", href: `/web/?lesson=${encodeURIComponent(t.lesson.slug)}`, textContent: "Open the lesson" });
+        items.push(a);
+      }
+    }
+    head.replaceChildren(...items);
+    head.classList.toggle("hidden", !items.length);
+    $("editor").dataset.mode = inLesson ? "lesson" : t.lesson ? "experiment" : "";
   }
 
   // Space plays or pauses and ←/→ jump 5s, unless focus is in the code or a field that uses those keys.
