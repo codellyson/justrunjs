@@ -77,6 +77,11 @@ import { EXAMPLE_CATEGORIES } from "../../web/examples";
           <path d="M20 4h-3a2 2 0 0 0-2 2v14a1 1 0 0 1 1-1h4z" />
         </svg>
       </button>
+      <button class="icon-btn" id="btn-record" title="Record a lesson">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <circle cx="12" cy="12" r="7" />
+        </svg>
+      </button>
       <button class="icon-btn" id="btn-share" title="Share (copy link)">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="18" cy="5" r="3" />
@@ -108,6 +113,7 @@ import { EXAMPLE_CATEGORIES } from "../../web/examples";
         <div id="tabs" role="tablist"></div>
         <div id="panel-tabs" class="panel-tabs hidden" role="tablist"></div>
         <div id="editor-host"></div>
+        <div id="lesson-bar" class="lesson-bar hidden" role="toolbar" aria-label="Lesson"></div>
       </div>
       <div id="splitter" aria-hidden="true"></div>
       <div id="results">

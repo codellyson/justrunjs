@@ -38,6 +38,7 @@ import {
   type ShareLanguage,
   type SharedBin,
 } from "./share.ts";
+import { initLessonMode, slotLoadAnnotations } from "./lesson-mode.ts";
 
 interface LineResult {
   line: number;
@@ -127,6 +128,10 @@ interface Tab {
   jsLanguage?: LanguageId;
   /** Which sub-panel the editor is currently showing for a playground tab. */
   activePanel?: PanelId;
+  /** Set on the tab playing a recorded lesson; never persisted. */
+  lessonSource?: string;
+  /** Set on an experiment forked from a recorded lesson. */
+  lesson?: { slug: string; originMs: number };
 }
 
 const STARTER = `// justrunjs in the browser — every top-level value shows up on the right.
@@ -275,7 +280,9 @@ function flushEditor(): void {
 
 function persistTabs(): void {
   flushEditor();
-  localStorage.setItem(TABS_KEY, JSON.stringify({ tabs, activeId }));
+  const kept = tabs.filter((t) => !t.lessonSource);
+  const keptActive = kept.some((t) => t.id === activeId) ? activeId : kept[0]?.id;
+  localStorage.setItem(TABS_KEY, JSON.stringify({ tabs: kept, activeId: keptActive }));
 }
 
 function languageExt(lang: LanguageId): Extension {
@@ -500,6 +507,8 @@ const inlineValuesField = StateField.define<DecorationSet>({
   provide: (f) => EditorView.decorations.from(f),
 });
 
+let lessonHooks: ReturnType<typeof initLessonMode> | null = null;
+
 const _bootTab = getActiveTab();
 const editor = new EditorView({
   parent: document.getElementById("editor-host") as HTMLElement,
@@ -510,7 +519,7 @@ const editor = new EditorView({
       wordWrapCompartment.of(wordWrap ? EditorView.lineWrapping : []),
       indentUnit.of("  "),
       tabSizeCompartment.of(EditorState.tabSize.of(tabSize)),
-      keymap.of([
+      Prec.high(keymap.of([
         indentWithTab,
         {
           key: "Mod-Enter",
@@ -526,13 +535,14 @@ const editor = new EditorView({
             return true;
           },
         },
-      ]),
+      ])),
       languageCompartment.of(slotLanguageExt(_bootTab)),
       inlineValuesField,
       Prec.highest(tsCompartment.of([])),
       Prec.highest(highlightCompartment.of(highlightFor(currentMode()))),
       editorTheme,
       EditorView.updateListener.of((update) => {
+        lessonHooks?.onUpdate(update);
         if (update.docChanged) {
           persistTabs();
           schedule();
@@ -892,6 +902,7 @@ document.getElementById("console-toggle")?.addEventListener("click", () => {
 
 /** Route a run/render to the right engine based on the active tab kind. */
 function runActive(): void {
+  lessonHooks?.onRun();
   if (getActiveTab().kind === "playground") void renderPreview();
   else void runEval();
 }
@@ -990,6 +1001,7 @@ function loadActiveIntoEditor(): void {
   const t = getActiveTab();
   editor.dispatch({
     changes: { from: 0, to: editor.state.doc.length, insert: slotContent(t) },
+    annotations: slotLoadAnnotations,
     effects: [
       languageCompartment.reconfigure(slotLanguageExt(t)),
       tsCompartment.reconfigure(tsExtFor(t)),
@@ -1019,6 +1031,7 @@ function activateTab(id: string): void {
   syncViewToActiveTab();
   persistTabs();
   schedule();
+  lessonHooks?.onTabChange();
 }
 
 function nextUntitled(lang: LanguageId): string {
@@ -1099,7 +1112,7 @@ function openPlaygroundTab(
 function closeTab(id: string): void {
   if (tabs.length <= 1) return;
   const idx = tabs.findIndex((t) => t.id === id);
-  if (idx === -1) return;
+  if (idx === -1 || tabs[idx].lessonSource) return;
   tabs.splice(idx, 1);
   if (activeId === id) {
     activeId = tabs[Math.max(0, idx - 1)].id;
@@ -1109,6 +1122,7 @@ function closeTab(id: string): void {
   }
   renderTabs();
   persistTabs();
+  lessonHooks?.onTabChange();
 }
 
 function toggleTabLang(id: string): void {
@@ -1153,6 +1167,7 @@ function switchPanel(p: PanelId): void {
   t.activePanel = p;
   loadActiveIntoEditor();
   renderPanelTabs();
+  lessonHooks?.onOpen(p);
   // Same tab/render — show its values when landing on JS, hide otherwise.
   applyInlineValues();
   persistTabs();
@@ -1235,6 +1250,25 @@ function renderTabs(): void {
 }
 
 renderTabs();
+
+lessonHooks = initLessonMode({
+  editor,
+  tabs: () => tabs,
+  activeTab: getActiveTab,
+  setActiveId: (id) => {
+    activeId = id;
+  },
+  activateTab,
+  switchPanel,
+  loadActiveIntoEditor,
+  refreshChrome: () => {
+    renderTabs();
+    syncViewToActiveTab();
+  },
+  runActive,
+  uniqueTabName,
+  showToast,
+});
 
 // ---------- toast ----------
 

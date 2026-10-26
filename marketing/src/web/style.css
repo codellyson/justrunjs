@@ -157,6 +157,7 @@ body {
 #btn-stop:hover { color: rgb(var(--danger)); }
 #btn-examples:hover { color: rgb(var(--lang-play)); }
 #btn-share:hover { color: rgb(var(--lang-ts)); }
+#btn-record:hover, #btn-record.recording { color: rgb(var(--danger)); }
 #btn-settings:hover { color: rgb(var(--warning)); }
 #btn-home:hover { color: rgb(var(--accent)); }
 
@@ -215,7 +216,7 @@ main {
   overflow: hidden;
   /* 40px file-tab bar, an auto panel-tab bar (0 when hidden), editor fills rest. */
   display: grid;
-  grid-template-rows: 40px auto 1fr;
+  grid-template-rows: 40px auto 1fr auto;
 }
 
 #editor-host {
@@ -909,3 +910,43 @@ body.hide-line-numbers .cm-gutters { display: none; }
   opacity: 0;
   pointer-events: none;
 }
+
+/* ---------- lesson mode: recording + playback bar under the editor ---------- */
+
+.lesson-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-top: 1px solid rgb(var(--border));
+  background: rgb(var(--bg-secondary));
+  font-size: 12px;
+  color: rgb(var(--text-secondary));
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.lesson-bar.hidden { display: none; }
+
+.lesson-btn {
+  background: transparent;
+  border: 1px solid rgb(var(--border));
+  border-radius: 6px;
+  color: rgb(var(--text-primary));
+  font: inherit;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.lesson-btn:hover { border-color: rgb(var(--text-muted)); }
+
+.lesson-time { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.lesson-seek { flex: 1 1 120px; min-width: 80px; accent-color: rgb(var(--accent)); }
+.lesson-mode { color: rgb(var(--accent)); }
+.lesson-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgb(var(--danger));
+  animation: lesson-pulse 1.2s ease-in-out infinite;
+}
+@keyframes lesson-pulse { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .lesson-dot { animation: none; } }
