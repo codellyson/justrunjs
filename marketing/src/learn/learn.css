@@ -54,6 +54,7 @@ body.learn {
 .lp-dots { display: flex; gap: 6px; }
 .lp-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
 .lp-dot.here { background: transparent; box-shadow: inset 0 0 0 2px var(--teacher); }
+.lp-dot.done { background: var(--student); box-shadow: none; }
 
 /* ---------- stage ---------- */
 
@@ -130,6 +131,19 @@ body.learn {
   font-size: 13px;
   font-weight: 700;
 }
+.lp-end-chip {
+  display: none;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--raise);
+  color: #f0c08f;
+  font-size: 13px;
+  font-weight: 600;
+}
+.is-ended .lp-end-chip { display: inline-flex; }
+.is-ended .lp-try { visibility: hidden; }
 .lp-saved { display: none; margin-left: auto; font-size: 13px; color: var(--muted); }
 
 .is-yours .lp-card { background: #1f2321; box-shadow: 0 0 0 2px var(--student), 0 30px 60px -30px rgb(0 0 0 / 0.7); }
@@ -279,6 +293,35 @@ body.learn {
 .is-yours .lp-photo { box-shadow: 0 0 0 3px var(--ground), 0 0 0 6px var(--line); }
 .is-yours .lp-bars, .is-yours .lp-caption { display: none; }
 
+/* Finished: the teacher's closing words, the student's next move, and what's next. */
+.lp-end { display: none; flex: 1; min-width: 0; align-items: stretch; flex-wrap: wrap; gap: 18px 28px; }
+.is-ended .lp-end { display: flex; }
+.is-ended .lp-caption, .is-ended .lp-bars { display: none; }
+.lp-end .lp-yt-actions { margin-top: 14px; }
+.lp-btn.lp-btn-student { border: 0; background: var(--student); color: #14201c; font-weight: 700; font-size: 16px; }
+.lp-btn.lp-btn-student:hover { background: #95d7c4; }
+.is-ended .lp-caret { display: none; }
+.is-ended .lp-editor .lp-typing { background: none; }
+.lp-next {
+  flex: 0 1 320px;
+  min-width: 240px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--line);
+  text-decoration: none;
+}
+.lp-next:hover { box-shadow: inset 0 0 0 1px var(--muted); }
+.lp-next-label { font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.lp-next-title { font-size: 21px; line-height: 1.3; font-weight: 600; font-variation-settings: "CASL" 0.8, "MONO" 0; }
+.lp-next-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; color: var(--muted); }
+.lp-next-go { width: 44px; height: 44px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--teacher); color: var(--ground); }
+
 .lp-yourturn { display: none; flex: 1; min-width: 0; align-items: center; flex-wrap: wrap; gap: 14px 22px; }
 .is-yours .lp-yourturn { display: flex; }
 .lp-yt-words { flex: 1 1 360px; min-width: 0; }
@@ -327,8 +370,9 @@ body.learn {
   cursor: pointer;
 }
 .lp-play:disabled { opacity: 0.5; cursor: default; }
-.lp-play .i-pause, .is-playing .lp-play .i-play { display: none; }
-.is-playing .lp-play .i-pause { display: block; }
+.lp-play .i-pause, .lp-play .i-replay, .is-playing .lp-play .i-play, .is-ended .lp-play .i-play { display: none; }
+.is-playing .lp-play .i-pause, .is-ended .lp-play .i-replay { display: block; }
+.is-ended .lp-play { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
 .is-yours .lp-play { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
 .is-yours .lp-seg span { background: #8a6a4c; }
 .lp-time { flex: none; font-size: 15px; color: var(--muted); font-variant-numeric: tabular-nums; font-variation-settings: "CASL" 1, "MONO" 1; }
@@ -389,6 +433,12 @@ select.lp-chip option { background: var(--card); }
   .lp-yt-title { font-size: 22px; }
   .lp-yt-text { font-size: 15px; }
   .lp-yt-actions { width: 100%; }
+  .lp-next { flex-basis: 100%; min-width: 0; padding: 14px 16px; }
+  /* Finished: the next move matters more than the code, so the code steps back. */
+  .is-ended .lp-card { flex: none; min-height: 0; }
+  .is-ended .lp-editor { height: 24dvh; }
+  .is-ended .lp-preview { display: none; }
+  .lp-next-title { font-size: 18px; }
   .lp-yt-actions .lp-btn { flex: 1 1 100%; }
   .lp-photo { width: 48px; height: 48px; font-size: 20px; box-shadow: 0 0 0 3px var(--ground), 0 0 0 5px var(--teacher); }
   .lp-name { display: none; }

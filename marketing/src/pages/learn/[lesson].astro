@@ -5,16 +5,23 @@ import "@fontsource-variable/recursive/full.css";
 import "../../learn/learn.css";
 import course from "../../learn/course.json";
 import { readFileSync } from "node:fs";
+import { formatTime } from "../../web/lesson";
 
 export function getStaticPaths() {
   // Relative to the project root (Astro's cwd): import.meta.url points into dist/ once bundled.
-  return course.lessons.map((slug, i) => {
+  const lessons = course.lessons.map((slug) => {
     const l = JSON.parse(readFileSync(`public/lessons/${slug}.json`, "utf8"));
-    return { params: { lesson: slug }, props: { index: i, title: l.title as string } };
+    return {
+      slug,
+      title: l.title as string,
+      kind: l.kind === "playground" ? "Web page" : "Code",
+      length: formatTime(l.durationMs),
+    };
   });
+  return lessons.map((l, i) => ({ params: { lesson: l.slug }, props: { index: i, title: l.title, next: lessons[i + 1] ?? null } }));
 }
 
-const { index, title } = Astro.props;
+const { index, title, next } = Astro.props;
 const { lesson: slug } = Astro.params;
 const total = course.lessons.length;
 const teacher = course.teacher as { name: string; photo: string | null };
@@ -30,7 +37,7 @@ const teacher = course.teacher as { name: string; photo: string | null };
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
   </head>
   <body class="learn">
-    <div class="lp" id="lp" data-slug={slug}>
+    <div class="lp" id="lp" data-slug={slug} data-lessons={JSON.stringify(course.lessons)}>
       <header class="lp-top">
         <nav class="lp-where" aria-label="Where you are">
           <a class="lp-back" href="/learn/" aria-label={`Back to ${course.title}`}>
@@ -41,10 +48,10 @@ const teacher = course.teacher as { name: string; photo: string | null };
           <span class="lp-title">{title}</span>
         </nav>
         <div class="lp-progress">
-          <span class="lp-count-long">Lesson {index + 1} of {total}</span>
+          <span class="lp-count-long" id="lp-count">Lesson {index + 1} of {total}</span>
           <span class="lp-count-short" aria-hidden="true">{index + 1}/{total}</span>
           <span class="lp-dots" aria-hidden="true">
-            {course.lessons.map((_, i) => <span class:list={["lp-dot", { here: i === index }]}></span>)}
+            {course.lessons.map((s, i) => <span class:list={["lp-dot", { here: i === index }]} data-slug={s}></span>)}
           </span>
         </div>
       </header>
@@ -52,6 +59,7 @@ const teacher = course.teacher as { name: string; photo: string | null };
       <main class="lp-stage">
         <section class="lp-card" aria-label="The lesson's code">
           <div class="lp-cardhead">
+            <span class="lp-end-chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"></path></svg> Where we ended up</span>
             <span class="lp-mine-chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg> Your copy</span>
             <div class="lp-files" id="lp-files" hidden>
               <button type="button" data-file="html">HTML</button>
@@ -80,6 +88,35 @@ const teacher = course.teacher as { name: string; photo: string | null };
             <span class="lp-bars" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
           </div>
           <p class="lp-caption" id="lp-caption" aria-live="polite"></p>
+          <div class="lp-end">
+            <div class="lp-yt-words">
+              <p class="lp-yt-title">That's it. Now it's yours.</p>
+              <p class="lp-yt-text" id="lp-end-text"></p>
+              <div class="lp-yt-actions">
+                <button type="button" class="lp-btn lp-btn-student" id="lp-end-try">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>
+                  Try it yourself
+                </button>
+                <button type="button" class="lp-btn" id="lp-again">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path></svg>
+                  Watch again
+                </button>
+              </div>
+            </div>
+            {next ? (
+              <a class="lp-next" href={`/learn/${next.slug}`}>
+                <span class="lp-next-label">Up next · Lesson {index + 2}</span>
+                <span class="lp-next-title">{next.title}</span>
+                <span class="lp-next-foot"><span>{next.kind} · {next.length}</span><span class="lp-next-go" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg></span></span>
+              </a>
+            ) : (
+              <a class="lp-next" href="/learn/">
+                <span class="lp-next-label">That was the last lesson</span>
+                <span class="lp-next-title">Back to {course.title}</span>
+                <span class="lp-next-foot"><span>Every lesson and your copies</span><span class="lp-next-go" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg></span></span>
+              </a>
+            )}
+          </div>
           <div class="lp-yourturn" id="lp-yourturn">
             <div class="lp-yt-words">
               <p class="lp-yt-title">Your turn.</p>
@@ -88,7 +125,7 @@ const teacher = course.teacher as { name: string; photo: string | null };
             <div class="lp-yt-actions">
               <button type="button" class="lp-btn lp-btn-main" id="lp-continue">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5v14l12-7z"></path></svg>
-                Continue the lesson
+                <span id="lp-continue-label">Continue the lesson</span>
               </button>
               <button type="button" class="lp-btn" id="lp-reset">Reset to my code</button>
             </div>
@@ -99,6 +136,7 @@ const teacher = course.teacher as { name: string; photo: string | null };
       <footer class="lp-player">
         <button type="button" class="lp-play" id="lp-play" aria-label="Play" disabled>
           <svg class="i-play" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5v14l12-7z"></path></svg>
+          <svg class="i-replay" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path></svg>
           <svg class="i-pause" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg>
         </button>
         <span class="lp-time" id="lp-time">0:00</span>

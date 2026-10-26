@@ -14,6 +14,7 @@ import { inlineValuesField, setInlineValues } from "../web/inline-values.ts";
 import { createScratchRunner } from "../web/scratch-runner.ts";
 import { createPreview } from "../web/preview.ts";
 import { findCopy, saveCopy, type LessonCopy } from "./copies.ts";
+import { doneLessons, markDone, savePosition, savedPosition } from "./progress.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -103,6 +104,8 @@ export async function startLesson(slug: string) {
   const savedEl = $("lp-saved");
   const ytText = $("lp-yt-text");
   const resetBtn = $<HTMLButtonElement>("lp-reset");
+  const countEl = $("lp-count");
+  const lessons = JSON.parse(root.dataset.lessons ?? "[]") as string[];
 
   const audio = new Audio();
   let lesson: Lesson;
@@ -116,6 +119,8 @@ export async function startLesson(slug: string) {
   let parse: ((src: string) => unknown) | null = null;
   /** The student's copy while it's on screen; null while the lesson is. */
   let copy: LessonCopy | null = null;
+  /** Shown instead of the intro when the lesson picks up where the student left off. */
+  let resumeNote: string | null = null;
 
   const language = new Compartment();
   const editing = new Compartment();
@@ -347,8 +352,13 @@ export async function startLesson(slug: string) {
       updatedAt: 0,
     };
     savedEl.textContent = existing ? "Saved on this device" : "Your changes save on this device";
-    ytText.textContent = `I've paused at ${formatTime(origin)}. Change anything you like; my version stays exactly as it was.`;
+    const atEnd = origin >= lesson.durationMs - 250;
+    ytText.textContent = atEnd
+      ? "This is where we ended up. Change anything you like; my version stays exactly as it was."
+      : `I've paused at ${formatTime(origin)}. Change anything you like; my version stays exactly as it was.`;
+    $("lp-continue-label").textContent = atEnd ? "Watch the lesson again" : "Continue the lesson";
     root.classList.add("is-yours");
+    ended = false;
     started = true;
     // The address names the copy, so a reload (or a link from the course page) comes back to it.
     history.replaceState(null, "", `?copy=${origin}`);
@@ -440,15 +450,44 @@ export async function startLesson(slug: string) {
       const share = Math.min(1, Math.max(0, (ms - seg.from) / (seg.to - seg.from)));
       seg.fill.style.width = `${share * 100}%`;
     }
-    const line = ended ? lesson.outro ?? captionAt(ms) : started ? captionAt(ms) : INTRO;
+    const line = started ? captionAt(ms) : resumeNote ?? INTRO;
     if (caption.textContent !== line) caption.textContent = line;
     const isPlaying = playing();
     root.classList.toggle("is-playing", isPlaying);
+    root.classList.toggle("is-ended", ended && !copy);
     playBtn.setAttribute("aria-label", copy ? "Continue the lesson" : isPlaying ? "Pause" : ended ? "Watch again" : "Play");
   }
 
+  // Where the student is, remembered every few seconds of playback and whenever it stops.
+  let positionSavedAt = 0;
+  function rememberPosition() {
+    positionSavedAt = performance.now();
+    if (!ended) savePosition(slug, audio.currentTime * 1000);
+  }
+
+  /** Done lessons in the header: teal dots, and a count once this one is finished. */
+  function paintDone() {
+    const done = doneLessons();
+    for (const dot of document.querySelectorAll<HTMLElement>(".lp-dot")) dot.classList.toggle("done", done.includes(dot.dataset.slug ?? ""));
+    const count = lessons.filter((l) => done.includes(l)).length;
+    countEl.textContent = ended ? `${count} of ${lessons.length} done` : `Lesson ${lessons.indexOf(slug) + 1} of ${lessons.length}`;
+  }
+
+  function finish() {
+    advance(Infinity);
+    ended = true;
+    markDone(slug);
+    savePosition(slug, 0);
+    $("lp-end-text").textContent = lesson.outro ?? "Click into the code and change anything you like; my version stays exactly as it was.";
+    paintDone();
+    requestAnimationFrame(() => document.querySelector(".lp-end")?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+  }
+
   function tick() {
-    if (!audio.paused && !copy) advance(audio.currentTime * 1000);
+    if (!audio.paused && !copy) {
+      advance(audio.currentTime * 1000);
+      if (performance.now() - positionSavedAt > 5000) rememberPosition();
+    }
     paint();
     requestAnimationFrame(tick);
   }
@@ -457,6 +496,7 @@ export async function startLesson(slug: string) {
     leaveCopy();
     started = true;
     ended = false;
+    paintDone();
     audio.currentTime = ms / 1000;
     jump(ms);
     if (audio.paused) void settle(ms);
@@ -485,7 +525,7 @@ export async function startLesson(slug: string) {
     caption.textContent = e instanceof Error ? e.message : String(e);
     return;
   }
-  void import("../web/transpile.ts").then((m) => (parse = m.transpile));
+  const parserReady = import("../web/transpile.ts").then((m) => (parse = m.transpile));
 
   if (lesson.kind === "playground") {
     filesEl.hidden = false;
@@ -499,14 +539,15 @@ export async function startLesson(slug: string) {
   audio.onplay = () => {
     started = true;
     ended = false;
+    paintDone();
   };
   audio.onpause = () => {
-    if (!ended) void settle(audio.currentTime * 1000);
+    if (ended) return;
+    rememberPosition();
+    void settle(audio.currentTime * 1000);
   };
-  audio.onended = () => {
-    advance(Infinity);
-    ended = true;
-  };
+  audio.onended = finish;
+  paintDone();
 
   playBtn.disabled = false;
   tryBtn.disabled = false;
@@ -525,7 +566,22 @@ export async function startLesson(slug: string) {
       view.focus();
     });
   }
-  addEventListener("pagehide", saveNow);
+  addEventListener("pagehide", () => {
+    saveNow();
+    if (!audio.paused) rememberPosition();
+  });
+  $("lp-end-try").addEventListener("click", () => enterCopy());
+  $("lp-again").addEventListener("click", togglePlay);
+
+  // Pick up where the student left off, at the last complete code before that point.
+  const resumeAt = savedPosition(slug);
+  if (resumeAt > 3000 && resumeAt < lesson.durationMs - 1000 && !location.search) {
+    await parserReady;
+    const at = parse ? completeAt(lesson, marks, resumeAt, parse) : resumeAt;
+    audio.currentTime = at / 1000;
+    jump(at);
+    resumeNote = `Welcome back. We stopped at ${formatTime(at)}; press play to carry on.`;
+  }
   const linked = new URLSearchParams(location.search).get("copy");
   if (linked && findCopy(slug, Number(linked))) enterCopy(undefined, Number(linked));
   else if (location.search) history.replaceState(null, "", location.pathname);
