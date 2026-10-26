@@ -219,7 +219,7 @@ main {
 
 /* Pinned rows: #panel-tabs is display:none on scratchpad tabs, and auto-placement
  * would then shift the editor into the panel row and the lesson bar into 1fr. */
-#tabs { grid-row: 1; }
+.tab-bar { grid-row: 1; }
 #panel-tabs { grid-row: 2; }
 #editor-host { grid-row: 3; }
 #lesson-bar { grid-row: 4; }
@@ -464,28 +464,50 @@ main {
   color: rgb(var(--text-primary));
 }
 
-.tab-add {
+/* The strip scrolls; the + stays put beside it. */
+.tab-bar {
+  display: flex;
+  min-width: 0;
+  background: rgb(var(--bg-secondary));
+  border-bottom: 1px solid rgb(var(--border));
+}
+.tab-bar #tabs { flex: 1 1 auto; min-width: 0; border-bottom: 0; }
+/* More tabs off to the right: fade the edge so the strip reads as scrollable. */
+#tabs.more-right { mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); }
+.tab-new {
+  flex: none;
+  width: 40px;
   background: transparent;
   border: 0;
-  color: rgb(var(--text-muted));
-  height: 100%;
-  cursor: pointer;
-  font-size: 12.5px;
-  font-family: var(--font-mono);
+  border-left: 1px solid rgb(var(--border));
+  color: rgb(var(--text-secondary));
+  font-size: 18px;
   line-height: 1;
-  padding: 0 11px;
-  letter-spacing: 0.3px;
+  cursor: pointer;
 }
+.tab-new:hover { color: rgb(var(--text-primary)); background: rgb(var(--text-primary) / 0.03); }
 
-.tab-add:hover {
+.new-tab-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  padding: 8px 12px;
+  font: inherit;
   color: rgb(var(--text-primary));
-  background: rgb(var(--text-primary) / 0.03);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
 }
+.new-tab-option:hover { background: rgb(var(--accent) / 0.1); }
+.new-tab-option .example-lang { min-width: 34px; text-align: center; }
 
-.tab-add.ts:hover { color: rgb(var(--lang-ts)); }
-.tab-add.js:hover { color: rgb(var(--lang-js)); }
-.tab-add.npm:hover { color: rgb(var(--lang-npm)); }
-.tab-add.play:hover { color: rgb(var(--lang-play)); }
+@media (min-width: 768px) {
+  /* main.ts anchors it under the + button. */
+  .new-tab-menu { bottom: auto; width: 260px; }
+}
 
 /* ---------- settings popover ---------- */
 
@@ -924,7 +946,8 @@ a.example-item { color: inherit; text-decoration: none; }
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 20px;
+  /* Top of the window, clear of the lesson bar and its Back to lesson button. */
+  top: 16px;
   transform: translateX(-50%);
   background: rgb(var(--bg-secondary));
   border: 1px solid rgb(var(--border));
@@ -1084,6 +1107,7 @@ a.example-item { color: inherit; text-decoration: none; }
 
 @media (pointer: coarse) {
   .icon-btn { width: 44px; height: 44px; }
+  .tab-new { width: 48px; }
   #editor { grid-template-rows: 44px auto 1fr auto; }
   .panel-tab { min-height: 44px; padding-inline: 16px; }
   .tab .tab-close { width: 32px; height: 32px; }

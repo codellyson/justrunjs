@@ -129,7 +129,10 @@ const LESSONS = readdirSync(lessonsDir)
     </aside>
     <main>
       <div id="editor">
-        <div id="tabs" role="tablist"></div>
+        <div class="tab-bar">
+          <div id="tabs" role="tablist" aria-label="Open tabs"></div>
+          <button id="btn-new-tab" class="tab-new" title="New tab" aria-label="New tab">+</button>
+        </div>
         <div id="panel-tabs" class="panel-tabs hidden" role="tablist"></div>
         <div id="editor-host"></div>
         <div id="lesson-bar" class="lesson-bar hidden" role="toolbar" aria-label="Lesson"></div>
@@ -233,6 +236,14 @@ const LESSONS = readdirSync(lessonsDir)
     </div>
 
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+    <div id="new-tab-menu" class="settings-popover new-tab-menu hidden" role="dialog" aria-label="New tab">
+      <div class="settings-section">
+        <button type="button" class="new-tab-option" data-new="typescript"><span class="example-lang lang-ts">TS</span>TypeScript scratchpad</button>
+        <button type="button" class="new-tab-option" data-new="javascript"><span class="example-lang lang-js">JS</span>JavaScript scratchpad</button>
+        <button type="button" class="new-tab-option" data-new="npm"><span class="example-lang lang-ts">TS</span>Scratchpad with an npm import</button>
+        <button type="button" class="new-tab-option" data-new="playground"><span class="example-lang lang-play">&lt;/&gt;</span>HTML/CSS/JS playground</button>
+      </div>
+    </div>
     <div id="account-popover" class="settings-popover account-popover hidden" role="dialog" aria-label="Account"></div>
 
     <div id="settings-popover" class="settings-popover hidden" role="dialog" aria-label="Settings">

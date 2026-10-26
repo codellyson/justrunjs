@@ -331,6 +331,10 @@ const editorTheme = EditorView.theme(
   },
 );
 
+// Comments follow the theme: between muted and secondary text, which justui keeps at
+// 4.5:1 or better on both backgrounds, so they stay quiet but readable in every theme.
+const COMMENT_COLOR = "color-mix(in srgb, rgb(var(--text-muted)) 50%, rgb(var(--text-secondary)))";
+
 const darkHighlight = HighlightStyle.define([
   { tag: tags.keyword, color: "#e879a4" },
   { tag: tags.controlKeyword, color: "#e879a4" },
@@ -347,9 +351,9 @@ const darkHighlight = HighlightStyle.define([
   { tag: tags.function(tags.propertyName), color: "#e879a4" },
   { tag: tags.typeName, color: "#8fc1e0" },
   { tag: tags.className, color: "#8fc1e0" },
-  { tag: tags.comment, color: "#7c7266", fontStyle: "italic" },
-  { tag: tags.lineComment, color: "#7c7266", fontStyle: "italic" },
-  { tag: tags.blockComment, color: "#7c7266", fontStyle: "italic" },
+  { tag: tags.comment, color: COMMENT_COLOR, fontStyle: "italic" },
+  { tag: tags.lineComment, color: COMMENT_COLOR, fontStyle: "italic" },
+  { tag: tags.blockComment, color: COMMENT_COLOR, fontStyle: "italic" },
   { tag: tags.operator, color: "#e879a4" },
   { tag: tags.punctuation, color: "#e8ded2" },
   { tag: tags.bracket, color: "#e8ded2" },
@@ -373,9 +377,9 @@ const lightHighlight = HighlightStyle.define([
   { tag: tags.function(tags.propertyName), color: "#8250df" },
   { tag: tags.typeName, color: "#24292f" },
   { tag: tags.className, color: "#953800" },
-  { tag: tags.comment, color: "#6e7781", fontStyle: "italic" },
-  { tag: tags.lineComment, color: "#6e7781", fontStyle: "italic" },
-  { tag: tags.blockComment, color: "#6e7781", fontStyle: "italic" },
+  { tag: tags.comment, color: COMMENT_COLOR, fontStyle: "italic" },
+  { tag: tags.lineComment, color: COMMENT_COLOR, fontStyle: "italic" },
+  { tag: tags.blockComment, color: COMMENT_COLOR, fontStyle: "italic" },
   { tag: tags.operator, color: "#cf222e" },
   { tag: tags.punctuation, color: "#24292f" },
   { tag: tags.bracket, color: "#24292f" },
@@ -1308,33 +1312,40 @@ function renderTabs(): void {
   }
   if (hadFocus) tabsEl.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
 
-  const addTs = document.createElement("button");
-  addTs.className = "tab-add ts";
-  addTs.textContent = "+TS";
-  addTs.title = "New TypeScript tab";
-  addTs.addEventListener("click", () => newTab("typescript"));
-  tabsEl.appendChild(addTs);
+  // Bring the open tab into view, and fade the strip's edge when more tabs are off-screen.
+  tabsEl.querySelector<HTMLElement>(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  markTabOverflow();
+}
 
-  const addJs = document.createElement("button");
-  addJs.className = "tab-add js";
-  addJs.textContent = "+JS";
-  addJs.title = "New JavaScript tab";
-  addJs.addEventListener("click", () => newTab("javascript"));
-  tabsEl.appendChild(addJs);
+function markTabOverflow(): void {
+  if (!tabsEl) return;
+  const more = tabsEl.scrollWidth - tabsEl.clientWidth - tabsEl.scrollLeft > 1;
+  tabsEl.classList.toggle("more-right", more);
+}
+tabsEl?.addEventListener("scroll", markTabOverflow);
+window.addEventListener("resize", markTabOverflow);
 
-  const addNpm = document.createElement("button");
-  addNpm.className = "tab-add npm";
-  addNpm.textContent = "+npm";
-  addNpm.title = "New tab with an npm: import template";
-  addNpm.addEventListener("click", () => newTab("typescript", NPM_TEMPLATE));
-  tabsEl.appendChild(addNpm);
-
-  const addPlay = document.createElement("button");
-  addPlay.className = "tab-add play";
-  addPlay.textContent = "+Play";
-  addPlay.title = "New playground (HTML/CSS/JS with live preview)";
-  addPlay.addEventListener("click", () => newPlayground());
-  tabsEl.appendChild(addPlay);
+const newTabBtn = document.getElementById("btn-new-tab");
+const newTabMenu = document.getElementById("new-tab-menu");
+if (newTabBtn && newTabMenu) {
+  // Anchor under the + button; on phones the sheet rules position it instead.
+  newTabBtn.addEventListener("click", () => {
+    const r = newTabBtn.getBoundingClientRect();
+    const sheet = window.matchMedia("(max-width: 767px)").matches;
+    newTabMenu.style.top = sheet ? "" : `${r.bottom + 4}px`;
+    newTabMenu.style.left = sheet ? "" : `${Math.max(8, r.right - 260)}px`;
+  });
+  const menu = wirePopover(newTabBtn, newTabMenu);
+  newTabMenu.querySelectorAll<HTMLElement>(".new-tab-option").forEach((opt) =>
+    opt.addEventListener("click", () => {
+      menu.close(false);
+      const kind = opt.dataset.new;
+      if (kind === "playground") newPlayground();
+      else if (kind === "npm") newTab("typescript", NPM_TEMPLATE);
+      else newTab(kind === "javascript" ? "javascript" : "typescript");
+      editor.focus();
+    }),
+  );
 }
 
 renderTabs();

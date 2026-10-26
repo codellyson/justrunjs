@@ -236,7 +236,7 @@ export function initLessonMode(ctx: LessonContext) {
     const exp: LessonTab = {
       ...from,
       id: "t-" + Date.now(),
-      name: ctx.uniqueTabName(`${lesson!.title} @ ${formatTime(shownMs)}${from.kind === "playground" ? ".html" : lesson!.language === "typescript" ? ".ts" : ".js"}`),
+      name: ctx.uniqueTabName(`${lesson!.title} (my copy from ${formatTime(shownMs)})`),
       lessonSource: undefined,
       lesson: { slug: slug!, originMs: shownMs },
     };
@@ -447,7 +447,7 @@ export function initLessonMode(ctx: LessonContext) {
       const exp = onLessonTab() ? latestExperiment() : undefined;
       range.max = String(lesson.durationMs);
       if (onLessonTab()) items.push(caption);
-      items.push(button(onLessonTab() && !audio.paused ? "❚❚ Pause" : "▶ Play", togglePlay), clock, range, speed);
+      items.push(button(onLessonTab() && !audio.paused ? "❚❚ Pause" : "▶ Play", togglePlay, "Play or pause (Space); ←/→ jump 5s"), clock, range, speed);
       if (exp) items.push(button("Open your experiment", () => ctx.activateTab(exp.id)));
       if (mine) {
         items.push(
@@ -461,6 +461,23 @@ export function initLessonMode(ctx: LessonContext) {
     bar.classList.toggle("hidden", !items.length);
     renderTime();
   }
+
+  // Space plays or pauses and ←/→ jump 5s, unless focus is in the code or a field that uses those keys.
+  window.addEventListener("keydown", (e) => {
+    if (!lesson || !onLessonTab() || e.metaKey || e.ctrlKey || e.altKey) return;
+    const el = e.target as HTMLElement;
+    if (el.closest(".cm-editor, input, select, textarea, [contenteditable]")) return;
+    if (e.key === " " && !el.closest("button, [role=tab]")) {
+      e.preventDefault();
+      togglePlay();
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      const ms = Math.min(lesson.durationMs, Math.max(0, audio.currentTime * 1000 + (e.key === "ArrowRight" ? 5000 : -5000)));
+      started = true;
+      audio.currentTime = ms / 1000;
+      jump(ms);
+    }
+  });
 
   if (slug) void loadLesson(slug);
   setInterval(() => rec && !rec.done && renderTime(), 250);
