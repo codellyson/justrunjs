@@ -29,14 +29,14 @@
         font-weight="500"
         font-size="36"
         fill="#d6cbbd"
-        letter-spacing="-0.5">Write JavaScript and see every value.</text>
+        letter-spacing="-0.5">Write TypeScript or JavaScript.</text>
   <text x="600" y="455"
         text-anchor="middle"
         font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
         font-weight="500"
         font-size="36"
         fill="#f0a35e"
-        letter-spacing="-0.5">Or learn it, one lesson at a time.</text>
+        letter-spacing="-0.5">See every value as you type.</text>
 
   <!-- Footer -->
   <text x="600" y="555"

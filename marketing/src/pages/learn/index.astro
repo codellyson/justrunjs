@@ -34,9 +34,7 @@ const pencil = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stro
 
     <main class="cp">
       <section class="cp-hero" aria-labelledby="cp-title">
-        <div class="cp-photo">
-          {teacher.photo ? <img src={teacher.photo} alt="" /> : <span aria-hidden="true">{teacher.name.slice(0, 1)}</span>}
-        </div>
+        {teacher.photo && <div class="cp-photo"><img src={teacher.photo} alt="" /></div>}
         <div class="cp-hero-text">
           <p class="cp-by">A course by {teacher.name}</p>
           <h1 id="cp-title">{course.title}</h1>

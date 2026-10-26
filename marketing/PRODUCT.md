@@ -33,7 +33,7 @@ The lesson is not a video of an editor; it is the editor. Recorded edits replay 
 - **Course page:** `/learn/` lists the lessons in `src/learn/course.json` (course name, intro, teacher, order) with each student's progress and copies.
 - **Playback:** `/learn/<name>` is the lesson page; audio drives a read-only editor that replays the instructor's changes, runs the code and shows values. Old `/web/?lesson=<name>` links redirect there. Clicking the code pauses the lesson and opens the student's own copy from that moment ("Your turn"); copies, progress and finished lessons are kept in the browser.
 - **Accounts:** optional email-code sign-in, on the course page or in the scratchpad. Signed in, a student's lesson copies, finished lessons and lesson positions sync across devices (when two devices change the same copy, both versions are kept); guests keep everything in their browser. Experiments made with the old in-editor player still sync from the scratchpad.
-- Embedded on the landing page as a live editor.
+- **Landing page:** developers first (the scratchpad), lessons second. Its hero is a real lesson playing muted and looping (`/learn/<name>?demo`), and its other pictures are screenshots captured from the running app; no drawn or invented UI. With no teacher photo in `course.json`, no stand-in avatar is shown anywhere.
 
 ## Capabilities and Constraints
 

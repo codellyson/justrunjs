@@ -635,3 +635,12 @@ select.lp-chip option { background: var(--card); }
   .cp-copy-label, .cp-start-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .cp-how { padding: 22px 20px; }
 }
+
+/* ---------- demo: the landing page's preview of a lesson ---------- */
+
+.is-demo { cursor: pointer; }
+.is-demo .lp-top, .is-demo .lp-player, .is-demo .lp-cardhead { display: none; }
+.is-demo .lp-stage { padding: 0 0 8px; gap: 18px; overflow: hidden; }
+.is-demo .lp-card { max-width: none; box-shadow: none; }
+.is-demo .lp-voice { max-width: none; padding: 0 6px; min-height: 0; }
+.is-demo .lp-editor .cm-scroller { padding-top: 22px; }

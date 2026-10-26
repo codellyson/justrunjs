@@ -109,7 +109,9 @@ export async function startLesson(slug: string) {
   const lessons = JSON.parse(root.dataset.lessons ?? "[]") as string[];
 
   // Signed in: bring copies and progress from the account before resuming or reopening a copy.
-  const synced = syncAll();
+  // ?demo: the landing page's preview. Muted, looping, saves nothing; a click opens the real lesson.
+  const demo = new URLSearchParams(location.search).has("demo");
+  const synced = demo ? Promise.resolve(false) : syncAll();
   const audio = new Audio();
   let lesson: Lesson;
   let marks: ReplayState[];
@@ -172,10 +174,15 @@ export async function startLesson(slug: string) {
     return true;
   }
 
+  // The line the teacher is typing right now: half-typed code (`nums.map`) has a value, but not
+  // the one the lesson is heading for, so that line shows none until they move on.
+  let typingLine = 0;
   const runner = createScratchRunner({
     source: () => view.state.doc.toString(),
     onChange: () => {
-      if (editorSlot === "main") view.dispatch({ effects: setInlineValues.of(runner.inlineValues()) });
+      if (editorSlot !== "main") return;
+      const values = runner.inlineValues().filter((v) => !(playing() && v.line === typingLine && !v.error));
+      view.dispatch({ effects: setInlineValues.of(values) });
     },
     onStatus: () => {},
     holdError,
@@ -280,6 +287,7 @@ export async function startLesson(slug: string) {
             effects: [setCaret.of(end), EditorView.scrollIntoView(end, { y: "nearest" })],
             annotations: Transaction.addToHistory.of(false),
           });
+          typingLine = view.state.doc.lineAt(end).number;
         }
         lastEditAt = performance.now();
         runSoon();
@@ -484,7 +492,7 @@ export async function startLesson(slug: string) {
   let positionSavedAt = 0;
   function rememberPosition() {
     positionSavedAt = performance.now();
-    if (ended) return;
+    if (ended || demo) return;
     savePosition(slug, audio.currentTime * 1000);
     void pushProgress(slug, audio.currentTime * 1000);
   }
@@ -573,6 +581,24 @@ export async function startLesson(slug: string) {
   };
   audio.onended = finish;
   paintDone();
+
+  if (demo) {
+    root.classList.add("is-demo");
+    audio.muted = true;
+    audio.onpause = null;
+    audio.onended = () => {
+      advance(Infinity);
+      setTimeout(() => {
+        seekTo(0);
+        void audio.play().catch(() => {});
+      }, 2500);
+    };
+    resumeNote = "Click to watch this lesson with sound.";
+    root.addEventListener("click", () => (window.top ?? window).location.assign(`/learn/${slug}`));
+    void audio.play().catch(() => {}); // a browser that blocks even muted autoplay shows the first frame and the note
+    requestAnimationFrame(tick);
+    return;
+  }
 
   playBtn.disabled = false;
   tryBtn.disabled = false;
