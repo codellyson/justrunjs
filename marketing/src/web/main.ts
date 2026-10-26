@@ -1101,6 +1101,7 @@ function syncViewToActiveTab(): void {
   previewPane?.classList.toggle("hidden", !isPlay);
   resultsInner.classList.toggle("hidden", isPlay);
   positionResults();
+  renderSaveStatus();
   renderPanelTabs();
   // Values belong to whatever tab last rendered; drop them until this tab re-runs.
   lastValues.clear();
@@ -1340,6 +1341,28 @@ function renderTabs(): void {
   markTabOverflow();
 }
 
+/** Where the open tab's work is saved, with a Retry when a save to the account failed. */
+function renderSaveStatus(): void {
+  const el = document.getElementById("save-status");
+  if (!el) return;
+  const t = getActiveTab();
+  const s = t.lessonSource || !account ? null : account.statusFor(t);
+  el.replaceChildren();
+  el.classList.toggle("hidden", !s);
+  el.classList.toggle("failed", !!s?.retry);
+  if (!s) return;
+  el.title = s.reason ?? "";
+  el.append(s.text);
+  if (s.retry) {
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "save-retry";
+    retry.textContent = "Retry";
+    retry.addEventListener("click", s.retry);
+    el.append(retry);
+  }
+}
+
 function markTabOverflow(): void {
   if (!tabsEl) return;
   const more = tabsEl.scrollWidth - tabsEl.clientWidth - tabsEl.scrollLeft > 1;
@@ -1383,6 +1406,9 @@ account = initAccount({
   persist: persistTabs,
   showToast,
 });
+
+account.onChange(renderSaveStatus);
+renderSaveStatus();
 
 lessonHooks = initLessonMode({
   account,

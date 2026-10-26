@@ -32,11 +32,29 @@ export function initAccount(ctx: AccountContext) {
   const progress = new Map<string, { positionMs: number; completed: boolean }>();
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   const listeners = new Set<() => void>();
-  const changed = () => listeners.forEach((f) => f());
+  const changed = () => {
+    if (saveNote) saveNote.textContent = saveNoteText();
+    listeners.forEach((f) => f());
+  };
 
   // ---------- sync ----------
 
+  // One request per experiment at a time; a failed save retries with back-off (2s, 4s … 60s)
+  // instead of on every edit, and keeps the reason for the status line.
+  const inFlight = new Set<string>();
+  const failures = new Map<string, { reason: string; tries: number; timer: ReturnType<typeof setTimeout> }>();
+  const unsent = (t: SyncedTab) => sent.get(t.id) !== JSON.stringify(payload(t));
+
+  function reasonFor(code: number, error?: string) {
+    if (code === 0) return navigator.onLine ? "Couldn't reach the server." : "You're offline.";
+    if (code === 401) return "Your sign-in expired. Sign in again to save to your account.";
+    if (code === 413) return "This experiment is too big to save to your account.";
+    return error ?? `The server refused the save (${code}).`;
+  }
+
   async function push(tab: SyncedTab) {
+    if (inFlight.has(tab.id)) return; // the finished request re-checks for newer edits
+    inFlight.add(tab.id);
     const body = payload(tab);
     status.set(tab.id, "syncing");
     changed();
@@ -44,10 +62,14 @@ export function initAccount(ctx: AccountContext) {
       method: "PUT",
       body: JSON.stringify({ tab: body, base: tab.syncedAt ?? null }),
     }).catch((e: Error) => ({ ok: false, status: 0, data: { error: e.message } as { error?: string; conflict?: boolean } }));
+    inFlight.delete(tab.id);
     if (res.ok && "updatedAt" in res.data) {
       tab.syncedAt = res.data.updatedAt;
       sent.set(tab.id, JSON.stringify(body));
       status.set(tab.id, "saved");
+      clearTimeout(failures.get(tab.id)?.timer);
+      failures.delete(tab.id);
+      if (unsent(tab)) void push(tab); // edited while this save was in flight
     } else if (res.status === 409 && res.data.conflict && "tab" in res.data && res.data.tab) {
       // Another device saved first. Keep both: their copy becomes a new tab, then ours saves over the original.
       const theirs: SyncedTab = { ...res.data.tab, id: `${tab.id}-${res.data.updatedAt}`, name: `${res.data.tab.name} (other device)` };
@@ -57,10 +79,22 @@ export function initAccount(ctx: AccountContext) {
       void push(theirs);
       return push(tab);
     } else {
+      const tries = (failures.get(tab.id)?.tries ?? 0) + 1;
+      clearTimeout(failures.get(tab.id)?.timer);
+      const timer = setTimeout(() => {
+        if (ctx.tabs().includes(tab)) void push(tab);
+      }, Math.min(60_000, 2000 * 2 ** (tries - 1)));
+      failures.set(tab.id, { reason: reasonFor(res.status, res.data.error), tries, timer });
       status.set(tab.id, "error");
     }
     ctx.persist();
     changed();
+  }
+
+  function retry(tab: SyncedTab) {
+    clearTimeout(failures.get(tab.id)?.timer);
+    failures.delete(tab.id);
+    void push(tab);
   }
 
   /** Called after every local save; uploads experiments whose content changed. */
@@ -69,7 +103,8 @@ export function initAccount(ctx: AccountContext) {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       for (const t of ctx.tabs()) {
-        if (isExperiment(t) && sent.get(t.id) !== JSON.stringify(payload(t))) void push(t);
+        // A failing experiment waits for its back-off timer instead of retrying on every edit.
+        if (isExperiment(t) && !failures.has(t.id) && unsent(t)) void push(t);
       }
     }, 1000);
   }
@@ -98,6 +133,12 @@ export function initAccount(ctx: AccountContext) {
   // ---------- sign-in panel ----------
 
   const panel = $("account-popover");
+  // Only claim "saved" when it's true.
+  let saveNote: HTMLElement | null = null;
+  const saveNoteText = () =>
+    failures.size
+      ? "Some experiment changes haven't reached your account yet. They're safe on this device."
+      : "Your lesson experiments and progress save to your account.";
   const button = $("btn-account");
   let pendingEmail = "";
 
@@ -115,7 +156,7 @@ export function initAccount(ctx: AccountContext) {
       section.append(
         el("div", { className: "settings-title" }, "Account"),
         el("p", { className: "account-text" }, "Signed in as ", el("strong", {}, email)),
-        el("p", { className: "account-text account-muted" }, "Your lesson experiments and progress are saved to your account."),
+        (saveNote = el("p", { className: "account-text account-muted" }, saveNoteText())),
         el("button", { className: "settings-mode-btn", type: "button", onclick: signOut }, "Sign out"),
       );
     } else if (!pendingEmail) {
@@ -171,6 +212,8 @@ export function initAccount(ctx: AccountContext) {
   async function signOut() {
     await call("/api/auth/logout", { method: "POST" }).catch(() => {});
     email = null;
+    failures.forEach((f) => clearTimeout(f.timer));
+    failures.clear();
     status.clear();
     sent.clear();
     progress.clear();
@@ -191,11 +234,14 @@ export function initAccount(ctx: AccountContext) {
 
   return {
     onPersist,
-    /** For the lesson bar: where this tab's work is saved. */
-    statusText(tab: LessonTab) {
-      if (!email) return "Saved on this device · sign in to keep it everywhere";
-      const s = status.get(tab.id);
-      return s === "saved" ? "Saved to your account" : s === "error" ? "Not saved to your account yet" : "Syncing…";
+    /** Where this tab's work lives, for the status line in the tab bar. */
+    statusFor(tab: LessonTab): { text: string; reason?: string; retry?: () => void } {
+      const t = tab as SyncedTab;
+      if (!isExperiment(t)) return { text: "On this device", reason: "Saved in this browser. Experiments from lessons also save to your account when you sign in." };
+      if (!email) return { text: "On this device · sign in to keep it everywhere" };
+      const s = status.get(t.id);
+      if (s === "error") return { text: "Couldn't save to your account", reason: `${failures.get(t.id)?.reason ?? ""} Your work is safe on this device.`.trim(), retry: () => retry(t) };
+      return { text: s === "saved" ? "In your account" : "Saving…" };
     },
     /** Ask before a closed experiment is removed from the account too. */
     async onClose(tab: LessonTab) {

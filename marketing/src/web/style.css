@@ -474,6 +474,33 @@ main {
 .tab-bar #tabs { flex: 1 1 auto; min-width: 0; border-bottom: 0; }
 /* More tabs off to the right: fade the edge so the strip reads as scrollable. */
 #tabs.more-right { mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); }
+.save-status {
+  flex: none;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  font-size: 12px;
+  color: rgb(var(--text-secondary));
+  white-space: nowrap;
+}
+.save-status.hidden { display: none; }
+.save-status.failed { color: rgb(var(--warning)); }
+.save-retry {
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  color: inherit;
+  font: inherit;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+@media (max-width: 767px) {
+  /* Too little room beside the tabs; only a failure (with Retry) earns the space. */
+  .save-status:not(.failed) { display: none; }
+}
+
 .tab-new {
   flex: none;
   width: 40px;

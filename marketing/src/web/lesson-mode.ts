@@ -453,7 +453,6 @@ export function initLessonMode(ctx: LessonContext) {
         items.push(
           text(`Your experiment · from ${formatTime(t.lesson!.originMs)}`, "lesson-mode"),
           button("↩ Back to lesson", () => backToLesson()),
-          text(ctx.account.statusText(t)),
         );
       }
     }
