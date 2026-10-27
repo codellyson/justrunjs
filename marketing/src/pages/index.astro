@@ -4,12 +4,12 @@
 // in its demo mode, and the screenshots are captured from the running app.
 import Layout from '../layouts/Layout.astro';
 import '../styles/landing.css';
-import course from '../learn/course.json';
+import { allLessons, playlists, teacher } from '../learn/catalog';
 
 const repoUrl = 'https://github.com/codellyson/justrunjs';
-const firstLesson = course.lessons[0];
+const firstLesson = playlists[0].lessons[0].slug;
 const demoLesson = 'array-basics';
-const lessonCount = course.lessons.length;
+const lessonCount = allLessons.length;
 
 const softwareJsonLd = {
   '@context': 'https://schema.org',
@@ -64,7 +64,7 @@ const softwareJsonLd = {
       <section class="ld-lessons" aria-labelledby="ld-lessons-h">
         <div class="ld-lessons-in">
           <div class="ld-lessons-text">
-            <p class="ld-by">Lessons by {course.teacher.name}</p>
+            <p class="ld-by">Lessons by {teacher.name}</p>
             <h2 id="ld-lessons-h">Take over the code at any moment.</h2>
             <p class="ld-sub">A lesson isn't a video of an editor. It is the editor: pause anywhere, change my code, run it, and pick the lesson back up where I paused.</p>
             <ul class="ld-steps">

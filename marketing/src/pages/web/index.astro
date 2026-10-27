@@ -13,12 +13,12 @@ import "@fontsource-variable/recursive/full.css";
 import { THEMES } from "../../lib/classroom-theme";
 import { EXAMPLE_CATEGORIES } from "../../web/examples";
 import { readFileSync } from "node:fs";
-import course from "../../learn/course.json";
+import { allLessons } from "../../learn/catalog";
 import { formatTime } from "../../web/lesson";
 
-// The course's lessons, in course order; each has its page at /learn/<slug>.
+// Every lesson, in playlist order; each has its page at /learn/<slug>.
 // Relative to the project root (Astro's cwd): import.meta.url points into dist/ once bundled.
-const LESSONS = course.lessons.map((slug) => {
+const LESSONS = allLessons.map(({ slug }) => {
   const l = JSON.parse(readFileSync(`public/lessons/${slug}.json`, "utf8"));
   return { slug, title: l.title, kind: l.kind, language: l.language, length: formatTime(l.durationMs) };
 });

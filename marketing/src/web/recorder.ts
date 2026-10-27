@@ -139,7 +139,7 @@ export function initRecorder(ctx: RecorderContext) {
     download(new Blob([JSON.stringify(done.lesson)], { type: "application/json" }), `${name}.json`);
     download(done.blob, done.lesson.audio);
     done.saved = true;
-    ctx.showToast(`Saved. Put both files in public/lessons/ and add "${name}" to src/learn/course.json to publish.`);
+    ctx.showToast(`Saved. Put both files in public/lessons/ and add "${name}" to a playlist in src/learn/playlists.json to publish.`);
     render();
   }
 
