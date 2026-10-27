@@ -29,7 +29,7 @@
 /* ---------- top ---------- */
 
 .ld-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding-block: 18px; }
-.ld-brand { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; text-decoration: none; font-variation-settings: "CASL" 1, "MONO" 0; }
+.ld-brand { display: inline-flex; align-items: center; gap: 10px; font-size: 26px; font-weight: 800; letter-spacing: -0.02em; text-decoration: none; font-variation-settings: "CASL" 1, "MONO" 0; }
 .ld-nav { display: flex; flex-wrap: wrap; gap: 4px; }
 .ld-nav a, .ld-foot nav a {
   min-height: 44px;
@@ -55,6 +55,7 @@
   text-wrap: balance;
   font-variation-settings: "CASL" 0.7, "MONO" 0;
 }
+.ld-bird { display: block; width: 320px; height: auto; margin-bottom: -6px; }
 .ld-lede { margin: 0; max-width: 52ch; font-size: 20px; line-height: 1.55; color: rgb(var(--text-secondary)); }
 .ld-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 22px; margin-top: 6px; }
 .ld-btn {
@@ -151,6 +152,7 @@
   .ld-nav a { padding: 0 10px; font-size: 14px; }
   .ld-hero { gap: 28px; padding-block: 28px 56px; align-items: stretch; }
   .ld-hero-text { align-items: stretch; text-align: left; gap: 18px; }
+  .ld-bird { width: 200px; }
   .ld-hero h1 { font-size: 40px; line-height: 1.06; }
   .ld-lede { font-size: 17px; }
   .ld-actions { flex-direction: column; align-items: stretch; gap: 8px; }
