@@ -3,6 +3,8 @@
   "name": "justrunjs",
   "main": "worker/index.ts",
   "compatibility_date": "2026-10-01",
+  // kreativekorna.com must be a zone on the deploying account; Cloudflare creates the DNS record.
+  "routes": [{ "pattern": "crow.kreativekorna.com", "custom_domain": true }],
   // The Astro build is served as static assets; only the API and sign-in pages reach the Worker.
   "assets": {
     "directory": "./dist",

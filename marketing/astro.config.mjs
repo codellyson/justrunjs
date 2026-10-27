@@ -2,7 +2,7 @@ import { defineConfig } from 'astro/config';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
-  site: 'https://runjs-rs.pages.dev',
+  site: 'https://crow.kreativekorna.com',
   // `pnpm dev:api` runs the Worker on 8797; the dev server forwards the API to it.
   // The Worker refuses cross-site writes, so present the Worker's own host and origin.
   vite: {

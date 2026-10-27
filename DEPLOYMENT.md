@@ -30,8 +30,10 @@ Create a token at <https://dash.cloudflare.com/profile/api-tokens> with **Worker
 
 ### 4. Custom domain
 
-After the first deploy, attach the domain under **Workers & Pages → justrunjs → Settings → Domains & Routes**.
-If the domain still points at the old Pages project, remove it there first, then delete the Pages project.
+The site lives at `crow.kreativekorna.com`: `routes` in `wrangler.jsonc` attaches it as the Worker's custom
+domain on deploy, and `site` in `astro.config.mjs` uses it for canonical and share-image URLs.
+`kreativekorna.com` must be a zone on the same Cloudflare account as `CLOUDFLARE_ACCOUNT_ID`, and
+`crow.kreativekorna.com` must not already have a DNS record, or the deploy fails.
 
 ## Local development
 
