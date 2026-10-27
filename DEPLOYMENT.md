@@ -15,7 +15,8 @@ Run these from `marketing/`.
 npx wrangler d1 create justrunjs
 ```
 
-Copy the printed `database_id` into `wrangler.jsonc` (replacing the all-zero placeholder) and commit it.
+Copy the printed `database_id` into `wrangler.jsonc` and commit it. Done: `justrunjs` exists on the
+Isiakalukmandellyson@gmail.com account (`fe217002-87b4-4c7d-b781-c5c5c1bfbfeb`).
 
 ### 2. Sign-in email sender
 
