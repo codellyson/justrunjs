@@ -16,7 +16,9 @@ let log = "";
 before(async () => {
   const wrangler = (...args: string[]) => ["wrangler", ...args, "--persist-to", state];
   execFileSync("npx", wrangler("d1", "migrations", "apply", "justrunjs", "--local"), { stdio: "ignore" });
-  worker = spawn("npx", [...wrangler("dev", "--port", String(PORT), "--inspector-port", "9399")], { stdio: ["ignore", "pipe", "pipe"] });
+  // Its own process group, so after() can stop wrangler's workerd children too: on Linux, killing
+  // npx alone leaves them running, holding the pipes open, and the test run never exits.
+  worker = spawn("npx", [...wrangler("dev", "--port", String(PORT), "--inspector-port", "9399")], { stdio: ["ignore", "pipe", "pipe"], detached: true });
   worker.stdout!.on("data", (d) => (log += d));
   worker.stderr!.on("data", (d) => (log += d));
   for (let i = 0; !log.includes("Ready on"); i++) {
@@ -24,7 +26,9 @@ before(async () => {
     await new Promise((r) => setTimeout(r, 500));
   }
 });
-after(() => worker?.kill());
+after(() => {
+  if (worker?.pid) process.kill(-worker.pid, "SIGTERM");
+});
 
 // A browser-like client: keeps its session cookie and sends this site's Origin on writes.
 function client() {
