@@ -15,13 +15,14 @@ Run these from `marketing/`.
 npx wrangler d1 create justrunjs
 ```
 
-Copy the printed `database_id` into `wrangler.jsonc` (replacing the all-zero placeholder) and commit it.
+Copy the printed `database_id` into `wrangler.jsonc` and commit it. Done: `justrunjs` exists on the
+Isiakalukmandellyson@gmail.com account (`fe217002-87b4-4c7d-b781-c5c5c1bfbfeb`).
 
 ### 2. Sign-in email sender
 
-Sign-in codes are sent from `signin@justrunjs.kreativekorna.com` (`MAIL_FROM` in `wrangler.jsonc`)
-through the Worker's `send_email` binding. `kreativekorna.com` must be onboarded to Cloudflare Email
-Sending, as it is for Fillie; add the `justrunjs` subdomain sender there if the dashboard asks for it.
+Sign-in codes are sent from `signin@crow.kreativekorna.com` (`MAIL_FROM` in `wrangler.jsonc`)
+through the Worker's `send_email` binding. Turn on Email Sending for that domain, as Fillie does for its own:
+`npx wrangler email sending enable crow.kreativekorna.com`.
 
 ### 3. API token and GitHub secrets
 
@@ -30,8 +31,10 @@ Create a token at <https://dash.cloudflare.com/profile/api-tokens> with **Worker
 
 ### 4. Custom domain
 
-After the first deploy, attach the domain under **Workers & Pages → justrunjs → Settings → Domains & Routes**.
-If the domain still points at the old Pages project, remove it there first, then delete the Pages project.
+The site lives at `crow.kreativekorna.com`: `routes` in `wrangler.jsonc` attaches it as the Worker's custom
+domain on deploy, and `site` in `astro.config.mjs` uses it for canonical and share-image URLs.
+`kreativekorna.com` must be a zone on the same Cloudflare account as `CLOUDFLARE_ACCOUNT_ID`, and
+`crow.kreativekorna.com` must not already have a DNS record, or the deploy fails.
 
 ## Local development
 

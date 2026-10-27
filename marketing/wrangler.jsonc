@@ -3,16 +3,17 @@
   "name": "justrunjs",
   "main": "worker/index.ts",
   "compatibility_date": "2026-10-01",
+  // kreativekorna.com must be a zone on the deploying account; Cloudflare creates the DNS record.
+  "routes": [{ "pattern": "crow.kreativekorna.com", "custom_domain": true }],
   // The Astro build is served as static assets; only the API and sign-in pages reach the Worker.
   "assets": {
     "directory": "./dist",
     "run_worker_first": ["/api/*", "/auth/*"]
   },
-  // database_id: replace with the id printed by `wrangler d1 create justrunjs` before the first deploy.
-  "d1_databases": [{ "binding": "DB", "database_name": "justrunjs", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }],
+  "d1_databases": [{ "binding": "DB", "database_name": "justrunjs", "database_id": "fe217002-87b4-4c7d-b781-c5c5c1bfbfeb", "migrations_dir": "migrations" }],
   "send_email": [{ "name": "EMAIL" }],
   "ratelimits": [{ "name": "SIGNIN_RATE_LIMIT", "namespace_id": "531250", "simple": { "limit": 10, "period": 60 } }],
-  "vars": { "MAIL_FROM": "signin@justrunjs.kreativekorna.com" },
+  "vars": { "MAIL_FROM": "signin@crow.kreativekorna.com" },
   "observability": { "enabled": true },
   "dev": { "port": 8797 }
 }
