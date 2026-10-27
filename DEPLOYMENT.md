@@ -20,9 +20,9 @@ Isiakalukmandellyson@gmail.com account (`fe217002-87b4-4c7d-b781-c5c5c1bfbfeb`).
 
 ### 2. Sign-in email sender
 
-Sign-in codes are sent from `signin@justrunjs.kreativekorna.com` (`MAIL_FROM` in `wrangler.jsonc`)
-through the Worker's `send_email` binding. `kreativekorna.com` must be onboarded to Cloudflare Email
-Sending, as it is for Fillie; add the `justrunjs` subdomain sender there if the dashboard asks for it.
+Sign-in codes are sent from `signin@crow.kreativekorna.com` (`MAIL_FROM` in `wrangler.jsonc`)
+through the Worker's `send_email` binding. Turn on Email Sending for that domain, as Fillie does for its own:
+`npx wrangler email sending enable crow.kreativekorna.com`.
 
 ### 3. API token and GitHub secrets
 

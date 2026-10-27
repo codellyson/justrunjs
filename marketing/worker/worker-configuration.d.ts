@@ -5,7 +5,7 @@ interface __BaseEnv_Env {
 	DB: D1Database;
 	EMAIL: SendEmail;
 	SIGNIN_RATE_LIMIT: RateLimit;
-	MAIL_FROM: "signin@justrunjs.kreativekorna.com";
+	MAIL_FROM: "signin@crow.kreativekorna.com";
 }
 declare namespace Cloudflare {
 	interface Env extends __BaseEnv_Env {}
