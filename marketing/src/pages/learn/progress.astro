@@ -1,0 +1,75 @@
+---
+// The student's progress across every playlist: lessons finished, time through the lessons,
+// each playlist's bar, and every copy they've kept. Filled in from the browser on load.
+import "@fontsource-variable/recursive/full.css";
+import "../../learn/learn.css";
+import Account from "../../learn/Account.astro";
+import { catalogJson, minutes, playlists, playlistUrl } from "../../learn/catalog";
+
+const play = '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5v14l12-7z"></path></svg>';
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#1a1512" />
+    <title>Your progress · crow</title>
+    <meta name="robots" content="noindex" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+  </head>
+  <body class="learn">
+    <header class="cp-top">
+      <a class="cp-brand" href="/">crow</a>
+      <nav class="pl-nav" aria-label="Learn">
+        <a class="cp-toplink" href="/learn/">All playlists</a>
+        <a class="cp-toplink" href="/web/">Open the scratchpad</a>
+      </nav>
+    </header>
+
+    <main class="cp">
+      <section class="pl-head" aria-labelledby="pg-title">
+        <h1 id="pg-title">Your progress</h1>
+        <dl class="pg-stats">
+          <div><dt>Lessons finished</dt><dd id="pg-finished">0</dd></div>
+          <div><dt>Time through the lessons</dt><dd id="pg-watched">0:00</dd></div>
+          <div><dt>Copies kept</dt><dd id="pg-copies-count">0</dd></div>
+        </dl>
+      </section>
+
+      <section class="pl-lists" aria-labelledby="pg-playlists-h">
+        <h2 id="pg-playlists-h">Playlists</h2>
+        <ul class="pl-cards">
+          {playlists.map((p) => (
+            <li class="pl-card" data-playlist={p.slug}>
+              <div class="pl-card-text">
+                <a class="pl-card-title" href={playlistUrl(p)}>{p.title}</a>
+                <span class="cp-row-meta">{p.lessons.length} {p.lessons.length === 1 ? "lesson" : "lessons"} · {minutes(p.durationMs)}</span>
+              </div>
+              <div class="pl-card-go">
+                <span class="pl-bar" aria-hidden="true"><span class="pl-fill"></span></span>
+                <span class="pl-card-count"></span>
+                <a class="cp-start pl-card-start" href={`/learn/${p.lessons[0].slug}`}><Fragment set:html={play} /><span class="pl-card-start-label">Start</span></a>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section class="pl-lists" aria-labelledby="pg-copies-h">
+        <h2 id="pg-copies-h">Your copies</h2>
+        <p class="cp-row-meta" id="pg-no-copies">None yet. Click into the code during a lesson to get your own copy to change and run.</p>
+        <ul class="pg-copies" id="pg-copies"></ul>
+        <Account />
+      </section>
+    </main>
+    <script type="application/json" id="catalog" set:html={catalogJson()} />
+    <script>
+      import { paintProgress } from "../../learn/overview.ts";
+      import { initAccount } from "../../learn/course-page.ts";
+      paintProgress();
+      initAccount(paintProgress);
+    </script>
+  </body>
+</html>

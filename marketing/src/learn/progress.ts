@@ -40,3 +40,27 @@ export function savePosition(slug: string, ms: number) {
   else delete all[slug];
   write(POSITION_KEY, all);
 }
+
+const LAST_KEY = "runjs.lastLesson";
+
+/** The lesson the student watched most recently on this device. */
+export function lastLesson(): string | null {
+  const slug = read<unknown>(LAST_KEY, null);
+  return typeof slug === "string" ? slug : null;
+}
+
+export function markLast(slug: string) {
+  write(LAST_KEY, slug);
+}
+
+/** Where the student is in a list of lessons: how many are done, and which one is up next
+ *  (one they're partway through, else the first not finished; null once all are done). */
+export function listState(lessons: string[]) {
+  const done = doneLessons();
+  const doneCount = lessons.filter((l) => done.includes(l)).length;
+  const next =
+    lessons.find((l) => !done.includes(l) && savedPosition(l) > 0) ??
+    lessons.find((l) => !done.includes(l)) ??
+    null;
+  return { done, doneCount, next };
+}

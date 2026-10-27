@@ -29,11 +29,11 @@ The lesson is not a video of an editor; it is the editor. Recorded edits replay 
 
 - **Scratchpad tabs:** TS/JS run in a Web Worker; each top-level expression's value appears beside its line. `npm:` imports load as ESM from esm.sh.
 - **Playground tabs:** HTML, CSS and JS panels render in a sandboxed iframe with a console.
-- **Recording:** the owner records a tab with their microphone; every edit, panel switch and run is logged against the audio clock, then saved as lesson JSON plus audio into `public/lessons/` and listed in `src/learn/course.json`.
-- **Course page:** `/learn/` lists the lessons in `src/learn/course.json` (course name, intro, teacher, order) with each student's progress and copies.
+- **Recording:** the owner records a tab with their microphone; every edit, panel switch and run is logged against the audio clock, then saved as lesson JSON plus audio into `public/lessons/` and listed in a playlist in `src/learn/playlists.json`.
+- **Playlists:** `src/learn/playlists.json` holds the teacher and the playlists (name, intro, lesson order); a lesson can be in more than one, and its page belongs to the first. `/learn/` shows the lesson the student was last in (Continue) and every playlist with a progress bar; `/learn/list/<playlist>/` lists that playlist's lessons with progress and copies; `/learn/progress/` totals lessons finished, time through the lessons, each playlist, and every copy.
 - **Playback:** `/learn/<name>` is the lesson page; audio drives a read-only editor that replays the instructor's changes, runs the code and shows values. Old `/web/?lesson=<name>` links redirect there. Clicking the code pauses the lesson and opens the student's own copy from that moment ("Your turn"); copies, progress and finished lessons are kept in the browser.
 - **Accounts:** optional email-code sign-in, on the course page or in the scratchpad. Signed in, a student's lesson copies, finished lessons and lesson positions sync across devices (when two devices change the same copy, both versions are kept); guests keep everything in their browser. Experiments made with the old in-editor player still sync from the scratchpad.
-- **Landing page:** learning first ("Learn to code in a live editor", Start the course), the scratchpad second ("Keep practising"). Its hero is a real lesson playing muted and looping (`/learn/<name>?demo`), and its other pictures are screenshots captured from the running app; no drawn or invented UI. With no teacher photo in `course.json`, no stand-in avatar is shown anywhere.
+- **Landing page:** learning first ("Learn to code in a live editor", Start the course), the scratchpad second ("Keep practising"). Its hero is a real lesson playing muted and looping (`/learn/<name>?demo`), and its other pictures are screenshots captured from the running app; no drawn or invented UI. With no teacher photo in `playlists.json`, no stand-in avatar is shown anywhere.
 
 ## Capabilities and Constraints
 

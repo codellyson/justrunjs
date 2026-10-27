@@ -1,19 +1,12 @@
 ---
-// The course page students start from: the teacher, the course, and every lesson with where
-// the student is in it. Progress lives in the browser, so the page fills it in on load.
+// Where students start: the lesson they were last in, then every playlist with how far through
+// it they are. Progress lives in the browser, so the page fills it in on load.
 import "@fontsource-variable/recursive/full.css";
 import "../../learn/learn.css";
-import course from "../../learn/course.json";
-import { readFileSync } from "node:fs";
-import { formatTime } from "../../web/lesson";
+import Account from "../../learn/Account.astro";
+import { catalogJson, minutes, playlists, playlistUrl, teacher } from "../../learn/catalog";
 
-// Relative to the project root (Astro's cwd): import.meta.url points into dist/ once bundled.
-const lessons = course.lessons.map((slug) => {
-  const l = JSON.parse(readFileSync(`public/lessons/${slug}.json`, "utf8"));
-  return { slug, title: l.title as string, kind: l.kind === "playground" ? "Web page" : "Code", length: formatTime(l.durationMs), durationMs: l.durationMs as number };
-});
-const teacher = course.teacher as { name: string; photo: string | null };
-const pencil = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>';
+const play = '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5v14l12-7z"></path></svg>';
 ---
 
 <!doctype html>
@@ -22,93 +15,63 @@ const pencil = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stro
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#1a1512" />
-    <title>{course.title} · crow</title>
-    <meta name="description" content={course.intro} />
+    <title>Lessons · crow</title>
+    <meta name="description" content={`Narrated coding lessons by ${teacher.name}, in playlists.`} />
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
   </head>
   <body class="learn">
     <header class="cp-top">
       <a class="cp-brand" href="/">crow</a>
-      <a class="cp-toplink" href="/web/">Open the scratchpad</a>
+      <nav class="pl-nav" aria-label="Learn">
+        <a class="cp-toplink" href="/learn/progress/">Your progress</a>
+        <a class="cp-toplink" href="/web/">Open the scratchpad</a>
+      </nav>
     </header>
 
     <main class="cp">
-      <section class="cp-hero" aria-labelledby="cp-title">
-        {teacher.photo && <div class="cp-photo"><img src={teacher.photo} alt="" /></div>}
-        <div class="cp-hero-text">
-          <p class="cp-by">A course by {teacher.name}</p>
-          <h1 id="cp-title">{course.title}</h1>
-          <p class="cp-intro">{course.intro}</p>
-          <div class="cp-go">
-            <a class="cp-cta" id="cp-cta" href={`/learn/${lessons[0].slug}`}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5v14l12-7z"></path></svg>
-              <span id="cp-cta-label">Start the course</span>
-            </a>
-            <span class="cp-done-count" id="cp-done-count"></span>
+      <section class="pl-head" aria-labelledby="pl-title">
+        <p class="cp-by">Lessons by {teacher.name}</p>
+        <h1 id="pl-title">Playlists</h1>
+      </section>
+
+      <section class="pl-continue" id="pl-continue" aria-labelledby="pl-continue-h" hidden>
+        <p class="pl-continue-label" id="pl-continue-h">Pick up where you left off</p>
+        <div class="pl-continue-body">
+          <div class="pl-continue-text">
+            <a class="pl-continue-title" id="pl-continue-title" href="/learn/"></a>
+            <span class="cp-row-meta" id="pl-continue-meta"></span>
+            <span class="pl-bar" aria-hidden="true"><span class="pl-fill" id="pl-continue-fill"></span></span>
           </div>
+          <a class="cp-cta" id="pl-continue-go" href="/learn/"><Fragment set:html={play} /><span id="pl-continue-go-label">Continue</span></a>
         </div>
       </section>
 
-      <section class="cp-lessons" aria-labelledby="cp-lessons-h">
-        <h2 id="cp-lessons-h">Lessons</h2>
-        <ol class="cp-list">
-          {lessons.map((l, i) => (
-            <li class="cp-row" data-slug={l.slug} data-duration={l.durationMs} data-title={l.title}>
-              <span class="cp-mark" aria-hidden="true">
-                <span class="cp-num">{i + 1}</span>
-                <svg class="cp-tick" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
-              </span>
-              <div class="cp-row-text">
-                <span class="cp-state"></span>
-                <a class="cp-row-title" href={`/learn/${l.slug}`}>{l.title}</a>
-                <span class="cp-row-meta">{l.kind} · {l.length}<span class="cp-row-where"></span></span>
+      <section class="pl-lists" aria-label="Playlists">
+        <ul class="pl-cards">
+          {playlists.map((p) => (
+            <li class="pl-card" data-playlist={p.slug}>
+              <div class="pl-card-text">
+                <a class="pl-card-title" href={playlistUrl(p)}>{p.title}</a>
+                <p class="pl-card-intro">{p.intro}</p>
+                <span class="cp-row-meta">{p.lessons.length} {p.lessons.length === 1 ? "lesson" : "lessons"} · {minutes(p.durationMs)}</span>
               </div>
-              <a class="cp-copy" href={`/learn/${l.slug}`} hidden>
-                <Fragment set:html={pencil} />
-                <span class="cp-copy-label">Your copy</span>
-              </a>
-              <a class="cp-start" href={`/learn/${l.slug}`} aria-label={`Start ${l.title}`} hidden>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5v14l12-7z"></path></svg>
-                <span class="cp-start-label">Start</span>
-              </a>
+              <div class="pl-card-go">
+                <span class="pl-bar" aria-hidden="true"><span class="pl-fill"></span></span>
+                <span class="pl-card-count"></span>
+                <a class="cp-start pl-card-start" href={`/learn/${p.lessons[0].slug}`}><Fragment set:html={play} /><span class="pl-card-start-label">Start</span></a>
+              </div>
             </li>
           ))}
-        </ol>
-        <div class="cp-account">
-          <p class="cp-saved" id="cp-saved" role="status">Your progress and your copies are saved in this browser, on this device.</p>
-          <button type="button" class="cp-link" id="cp-signin-open">Sign in to keep them on every device</button>
-          <button type="button" class="cp-link" id="cp-signout" hidden>Sign out of this browser</button>
-          <form class="cp-signin" id="cp-signin" hidden>
-            <label for="cp-email">Your email</label>
-            <div class="cp-field-row">
-              <input id="cp-email" type="email" autocomplete="email" required placeholder="you@example.com" />
-              <button type="submit" class="cp-btn">Email me a code</button>
-            </div>
-            <p class="cp-hint">No password: we email you a six-digit code.</p>
-          </form>
-          <form class="cp-signin" id="cp-code" hidden>
-            <label for="cp-code-input">The code we emailed to <span id="cp-code-email"></span></label>
-            <div class="cp-field-row">
-              <input id="cp-code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required pattern="[0-9]{6}" />
-              <button type="submit" class="cp-btn">Sign in</button>
-            </div>
-            <button type="button" class="cp-link" id="cp-code-back">Use a different email</button>
-          </form>
-          <p class="cp-error" id="cp-error" role="alert"></p>
-        </div>
-      </section>
-
-      <section class="cp-how" aria-labelledby="cp-how-h">
-        <h2 id="cp-how-h">How the lessons work</h2>
-        <p><strong class="cp-how-watch">Watch.</strong> I talk you through the code as I write it, right in the editor.</p>
-        <p><strong class="cp-how-try">Try it.</strong> Click into the code at any moment. You get your own copy to change and run.</p>
-        <p><strong>Come back.</strong> Continue the lesson from where I paused. Your copy stays saved.</p>
+        </ul>
+        <Account />
       </section>
     </main>
+    <script type="application/json" id="catalog" set:html={catalogJson()} />
     <script>
-      import { paintCourse, initAccount } from "../../learn/course-page.ts";
-      paintCourse();
-      initAccount();
+      import { paintIndex } from "../../learn/overview.ts";
+      import { initAccount } from "../../learn/course-page.ts";
+      paintIndex();
+      initAccount(paintIndex);
     </script>
   </body>
 </html>

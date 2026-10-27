@@ -1,30 +1,24 @@
 ---
 // One lesson: the instructor's narration replaying into a live editor. The look is the
-// classroom's own and stays the same whatever theme the scratchpad uses.
+// classroom's own and stays the same whatever theme the scratchpad uses. The header, dots and
+// "next" belong to the lesson's home playlist (the first one that lists it).
 import "@fontsource-variable/recursive/full.css";
 import "../../learn/learn.css";
-import course from "../../learn/course.json";
-import { readFileSync } from "node:fs";
-import { formatTime } from "../../web/lesson";
+import { allLessons, homePlaylist, playlistUrl, teacher } from "../../learn/catalog";
 
 export function getStaticPaths() {
-  // Relative to the project root (Astro's cwd): import.meta.url points into dist/ once bundled.
-  const lessons = course.lessons.map((slug) => {
-    const l = JSON.parse(readFileSync(`public/lessons/${slug}.json`, "utf8"));
-    return {
-      slug,
-      title: l.title as string,
-      kind: l.kind === "playground" ? "Web page" : "Code",
-      length: formatTime(l.durationMs),
-    };
+  return allLessons.map((l) => {
+    const playlist = homePlaylist(l.slug);
+    const index = playlist.lessons.findIndex((x) => x.slug === l.slug);
+    return { params: { lesson: l.slug }, props: { index, title: l.title, next: playlist.lessons[index + 1] ?? null, playlist } };
   });
-  return lessons.map((l, i) => ({ params: { lesson: l.slug }, props: { index: i, title: l.title, next: lessons[i + 1] ?? null } }));
 }
 
-const { index, title, next } = Astro.props;
+const { index, title, next, playlist } = Astro.props;
 const { lesson: slug } = Astro.params;
-const total = course.lessons.length;
-const teacher = course.teacher as { name: string; photo: string | null };
+const slugs = playlist.lessons.map((l) => l.slug);
+const total = slugs.length;
+const back = playlistUrl(playlist);
 ---
 
 <!doctype html>
@@ -33,16 +27,16 @@ const teacher = course.teacher as { name: string; photo: string | null };
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#1a1512" />
-    <title>{title} · {course.title}</title>
+    <title>{title} · {playlist.title}</title>
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
   </head>
   <body class="learn">
-    <div class="lp" id="lp" data-slug={slug} data-lessons={JSON.stringify(course.lessons)}>
+    <div class="lp" id="lp" data-slug={slug} data-lessons={JSON.stringify(slugs)}>
       <header class="lp-top">
         <nav class="lp-where" aria-label="Where you are">
-          <a class="lp-back" href="/learn/" aria-label={`Back to ${course.title}`}>
+          <a class="lp-back" href={back} aria-label={`Back to ${playlist.title}`}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>
-            <span class="lp-course">{course.title}</span>
+            <span class="lp-course">{playlist.title}</span>
           </a>
           <span class="lp-sep" aria-hidden="true">/</span>
           <span class="lp-title">{title}</span>
@@ -51,7 +45,7 @@ const teacher = course.teacher as { name: string; photo: string | null };
           <span class="lp-count-long" id="lp-count">Lesson {index + 1} of {total}</span>
           <span class="lp-count-short" aria-hidden="true">{index + 1}/{total}</span>
           <span class="lp-dots" aria-hidden="true">
-            {course.lessons.map((s, i) => <span class:list={["lp-dot", { here: i === index }]} data-slug={s}></span>)}
+            {slugs.map((s, i) => <span class:list={["lp-dot", { here: i === index }]} data-slug={s}></span>)}
           </span>
         </div>
       </header>
@@ -111,9 +105,9 @@ const teacher = course.teacher as { name: string; photo: string | null };
                 <span class="lp-next-foot"><span>{next.kind} · {next.length}</span><span class="lp-next-go" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg></span></span>
               </a>
             ) : (
-              <a class="lp-next" href="/learn/">
+              <a class="lp-next" href={back}>
                 <span class="lp-next-label">That was the last lesson</span>
-                <span class="lp-next-title">Back to {course.title}</span>
+                <span class="lp-next-title">Back to {playlist.title}</span>
                 <span class="lp-next-foot"><span>Every lesson and your copies</span><span class="lp-next-go" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg></span></span>
               </a>
             )}

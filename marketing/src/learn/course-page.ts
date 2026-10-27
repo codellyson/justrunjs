@@ -1,17 +1,14 @@
-// Fills in the course page from what this browser remembers: finished lessons, where the
-// student stopped, and their copies.
+// Fills in the playlist page from what this browser remembers: finished lessons, where the
+// student stopped, and their copies. Also the sign-in every learn page shares.
 import { formatTime } from "../web/lesson.ts";
 import { copiesOf } from "./copies.ts";
-import { doneLessons, savedPosition } from "./progress.ts";
+import { listState, savedPosition } from "./progress.ts";
 import { requestCode, signOut, signedInEmail, syncAll, verifyCode } from "./sync.ts";
 
 export function paintCourse() {
   const rows = [...document.querySelectorAll<HTMLElement>(".cp-row")];
-  const done = doneLessons();
-  const doneCount = rows.filter((r) => done.includes(r.dataset.slug!)).length;
-  // Up next: a lesson the student is partway through, else the first one not finished.
-  const started = rows.find((r) => !done.includes(r.dataset.slug!) && savedPosition(r.dataset.slug!) > 0);
-  const next = started ?? rows.find((r) => !done.includes(r.dataset.slug!));
+  const { done, doneCount, next: nextSlug } = listState(rows.map((r) => r.dataset.slug!));
+  const next = rows.find((r) => r.dataset.slug === nextSlug);
 
   rows.forEach((row, i) => {
     const slug = row.dataset.slug!;
@@ -45,7 +42,7 @@ export function paintCourse() {
   if (next) {
     const n = rows.indexOf(next) + 1;
     cta.href = `/learn/${next.dataset.slug}`;
-    label.textContent = savedPosition(next.dataset.slug!) ? `Continue lesson ${n}` : doneCount ? `Continue with lesson ${n}` : "Start the course";
+    label.textContent = savedPosition(next.dataset.slug!) ? `Continue lesson ${n}` : doneCount ? `Continue with lesson ${n}` : "Start the playlist";
   } else {
     label.textContent = "Watch lesson 1 again";
   }
@@ -59,7 +56,7 @@ export function paintCourse() {
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
 /** Sign in (email, then a code) so progress and copies follow the student; sync, then repaint. */
-export function initAccount() {
+export function initAccount(repaint: () => void) {
   const saved = $("cp-saved");
   const openBtn = $<HTMLButtonElement>("cp-signin-open");
   const outBtn = $<HTMLButtonElement>("cp-signout");
@@ -81,7 +78,7 @@ export function initAccount() {
 
   async function refresh() {
     show(await signedInEmail());
-    if (await syncAll()) paintCourse();
+    if (await syncAll()) repaint();
   }
 
   openBtn.addEventListener("click", () => {

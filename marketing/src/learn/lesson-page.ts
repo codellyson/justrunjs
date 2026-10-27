@@ -14,7 +14,7 @@ import { inlineValuesField, setInlineValues } from "../web/inline-values.ts";
 import { createScratchRunner } from "../web/scratch-runner.ts";
 import { createPreview } from "../web/preview.ts";
 import { findCopy, saveCopy, type LessonCopy } from "./copies.ts";
-import { doneLessons, markDone, savePosition, savedPosition } from "./progress.ts";
+import { doneLessons, markDone, markLast, savePosition, savedPosition } from "./progress.ts";
 import { pushCopy, pushProgress, signedInEmail, syncAll } from "./sync.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -493,6 +493,7 @@ export async function startLesson(slug: string) {
   function rememberPosition() {
     positionSavedAt = performance.now();
     if (ended || demo) return;
+    markLast(slug);
     savePosition(slug, audio.currentTime * 1000);
     void pushProgress(slug, audio.currentTime * 1000);
   }
@@ -508,6 +509,7 @@ export async function startLesson(slug: string) {
   function finish() {
     advance(Infinity);
     ended = true;
+    if (!demo) markLast(slug);
     markDone(slug);
     savePosition(slug, 0);
     void pushProgress(slug, 0, true);
